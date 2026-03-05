@@ -12,7 +12,7 @@ function asString(value: string | string[] | undefined) {
 
 export default async function SignUpPage({ searchParams }: SignUpPageProps) {
   const params = await searchParams;
-  const next = asString(params.next) || "/workspace";
+  const next = asString(params.next) || "/";
   const message = asString(params.message);
   const error = asString(params.error);
 
