@@ -57,3 +57,9 @@ Use Supabase SQL Editor and run:
 - Patient booking flow backed by live `appointments` data
 - Provider queue dashboard with status updates (`in_progress`, `completed`, `cancelled`)
 - Admin pulse dashboard with live system counts
+
+## Customer Documents
+
+- MVP test guide: `docs/MVP_Test_Guide.md`
+- MVP scope and workflow: `docs/MVP_Scope_Workflow.md`
+- Remaining phases sprint roadmap: `docs/Phase_Roadmap_Sprint_Plan.md`
