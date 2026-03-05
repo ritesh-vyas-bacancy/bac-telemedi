@@ -40,3 +40,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local tooling artifacts
+.git-alt/
+docs/pdf-build/
+mvp-start.out.log
+mvp-start.err.log
