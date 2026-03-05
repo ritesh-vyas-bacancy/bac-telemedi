@@ -17,7 +17,7 @@ export default async function SignUpPage({ searchParams }: SignUpPageProps) {
   const error = asString(params.error);
 
   return (
-    <main className="prototype-bg min-h-screen px-4 py-8 sm:px-8 sm:py-12">
+    <main className="min-h-screen bg-slate-50 px-4 py-8 sm:px-8 sm:py-12">
       <div className="mx-auto w-full max-w-xl rounded-3xl border border-white/70 bg-white/92 p-6 shadow-[0_24px_90px_-52px_rgba(8,60,80,0.6)]">
         <p className="text-xs font-semibold tracking-[0.18em] text-cyan-700">AUTHENTICATION</p>
         <h1 className="mt-2 text-3xl font-bold text-slate-900">Create Account</h1>
