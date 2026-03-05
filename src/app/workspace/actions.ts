@@ -16,6 +16,12 @@ function safePath(path: string | null) {
   return path;
 }
 
+function safeWeekday(value: string) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 0 || parsed > 6) return null;
+  return parsed;
+}
+
 export async function bookAppointmentAction(formData: FormData) {
   const returnTo = safePath(String(formData.get("return_to") ?? "/workspace/patient/booking"));
   const providerId = String(formData.get("provider_id") ?? "");
@@ -112,4 +118,49 @@ export async function updateAppointmentStatusAction(formData: FormData) {
 
   revalidatePath(returnTo);
   redirect(`${returnTo}?success=${encodeURIComponent(`Appointment status updated to ${nextStatus}.`)}`);
+}
+
+export async function addAvailabilityAction(formData: FormData) {
+  const returnTo = safePath(String(formData.get("return_to") ?? "/workspace/provider/schedule"));
+  const weekday = safeWeekday(String(formData.get("weekday") ?? ""));
+  const startTime = String(formData.get("start_time") ?? "");
+  const endTime = String(formData.get("end_time") ?? "");
+  const slotMinutes = Number(formData.get("slot_minutes") ?? "30");
+  const timezone = String(formData.get("timezone") ?? "Asia/Kolkata");
+
+  const { supabase, user, profile } = await requireProfile(returnTo);
+
+  if (profile.role !== "provider" && profile.role !== "admin") {
+    redirect(`${returnTo}?error=${encodeURIComponent("Only provider role can manage availability.")}`);
+  }
+
+  if (weekday === null || !startTime || !endTime || !Number.isFinite(slotMinutes)) {
+    redirect(`${returnTo}?error=${encodeURIComponent("Invalid availability input.")}`);
+  }
+
+  const payload = {
+    provider_id: profile.role === "admin" ? String(formData.get("provider_id") ?? user.id) : user.id,
+    weekday,
+    start_time: startTime,
+    end_time: endTime,
+    slot_minutes: slotMinutes,
+    timezone,
+    is_active: true,
+  };
+
+  const { error } = await supabase.from("provider_availability").insert(payload);
+
+  if (error) {
+    redirect(`${returnTo}?error=${encodeURIComponent(error.message)}`);
+  }
+
+  await supabase.from("audit_logs").insert({
+    actor_id: user.id,
+    action: "provider.availability_added",
+    entity_type: "provider_availability",
+    metadata: payload,
+  });
+
+  revalidatePath(returnTo);
+  redirect(`${returnTo}?success=${encodeURIComponent("Availability slot added.")}`);
 }
