@@ -46,3 +46,5 @@ next-env.d.ts
 docs/pdf-build/
 mvp-start.out.log
 mvp-start.err.log
+
+.vercel
