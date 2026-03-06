@@ -1,146 +1,149 @@
 import Link from "next/link";
-import Image from "next/image";
 import { redirect } from "next/navigation";
 import { getAuthContext } from "@/lib/auth/session";
 import { getDefaultModuleByRole } from "@/lib/workspace/config";
 import { HeroSlider, type HeroSlide } from "@/components/marketing/hero-slider";
+import { MarketingShell } from "@/components/marketing/marketing-shell";
 
 const HERO_SLIDES: HeroSlide[] = [
   {
     id: "slide-1",
     badge: "WELCOME BANNER",
-    title: "Enterprise Telemedicine For Hospitals, Clinics, and Care Networks",
+    title: "A Smooth, Enterprise-Grade Telemedicine Experience",
     description:
-      "Run consultations, care plans, billing, and operations in one secure, role-based cloud platform.",
-    metricLabel: "Active Journey Paths",
+      "A modern one-page website plus role-based platform for hospitals, providers, and patients to run care operations in one flow.",
+    metricLabel: "Role Journeys",
     metricValue: "3",
-    gradient: "from-cyan-600 via-sky-600 to-blue-700",
+    bullets: [
+      "Patient onboarding, booking, and visit tracking",
+      "Provider queue, notes, and prescriptions",
+      "Admin operations, compliance, and governance",
+      "Design system aligned for 2026 product demos",
+    ],
+    gradient: "from-cyan-600 via-blue-600 to-indigo-700",
   },
   {
     id: "slide-2",
-    badge: "CARE WORKFLOW",
-    title: "From Booking To Resolution, Every Step Is Connected",
+    badge: "HOW IT WORKS",
+    title: "From Booking to Audit Trail, Every Step Connected",
     description:
-      "Patients book and pay, providers complete clinical workflows, and admins monitor governance in real time.",
-    metricLabel: "Core Workflow Modules",
+      "The product covers consultation lifecycle, billing visibility, claim actions, incident handling, and real-time notifications.",
+    metricLabel: "Core Modules",
     metricValue: "10+",
+    bullets: [
+      "Consultation state machine with traceability",
+      "Claims and notification operations desk",
+      "Structured data model with role security",
+      "Ready for demo and stakeholder walkthroughs",
+    ],
     gradient: "from-emerald-600 via-teal-600 to-cyan-700",
   },
   {
     id: "slide-3",
-    badge: "OPS + COMPLIANCE",
-    title: "Claims, Notifications, Incidents, and Audit-Ready Logs",
+    badge: "HOSPITAL OPERATIONS",
+    title: "Business + Clinical Visibility In One Control Layer",
     description:
-      "Built for operational control with compliance-ready tracking and health-system visibility.",
-    metricLabel: "Operational Visibility",
-    metricValue: "360°",
-    gradient: "from-blue-700 via-indigo-700 to-cyan-700",
+      "Clinical actions, operational workflows, and governance controls are surfaced with clean visual hierarchy for enterprise adoption.",
+    metricLabel: "Operational View",
+    metricValue: "360",
+    bullets: [
+      "Track incidents, compliance, and role permissions",
+      "Control appointment and consultation statuses",
+      "Review immutable audit stream for accountability",
+      "Modern UX with gradients, glass depth, and motion",
+    ],
+    gradient: "from-blue-700 via-indigo-700 to-sky-700",
   },
 ];
 
-const ROLE_PANELS = [
+const PLATFORM_PANELS = [
   {
-    title: "Patient Experience",
-    color: "from-cyan-500 to-sky-600",
+    title: "Patient Platform",
+    subtitle: "Simple, guided digital care path",
     points: [
-      "Appointment booking and check-in",
-      "Consultation history and prescriptions",
-      "Invoice tracking and payment status",
-      "Inbox notifications and communication timeline",
+      "Book appointments and view schedule",
+      "Check consultation state and join video room",
+      "Read prescriptions, care orders, and invoices",
+      "Track reminders in a unified inbox timeline",
     ],
+    glow: "from-cyan-500/25 to-blue-600/20",
   },
   {
-    title: "Provider Command Center",
-    color: "from-indigo-500 to-blue-600",
+    title: "Provider Workspace",
+    subtitle: "Clinical execution without clutter",
     points: [
-      "Queue and consultation state control",
-      "SOAP notes, prescriptions, and care orders",
-      "Claim submission and status updates",
-      "Targeted patient notifications",
+      "Manage queue and readiness status in one board",
+      "Create SOAP notes, prescriptions, and care orders",
+      "Submit and update claim lifecycle details",
+      "Send patient notifications by selected channels",
     ],
+    glow: "from-indigo-500/25 to-blue-600/20",
   },
   {
-    title: "Admin Control Tower",
-    color: "from-emerald-500 to-green-600",
+    title: "Admin Command Center",
+    subtitle: "Operational control and governance",
     points: [
-      "Operations pulse and throughput metrics",
-      "Appointment, claims, and compliance oversight",
-      "Incident management and role permissions",
-      "Centralized audit stream and governance",
+      "Monitor throughput, revenue, and active sessions",
+      "Control appointment and consultation status updates",
+      "Track incidents, compliance events, and permissions",
+      "Review audit logs for complete accountability",
     ],
+    glow: "from-emerald-500/25 to-teal-600/20",
   },
 ];
 
-const HOW_IT_WORKS = [
+const JOURNEY_STEPS = [
   {
     step: "01",
-    title: "Onboard Role",
-    detail: "User signs up as Patient or Provider and enters role-specific workspace instantly.",
+    title: "Choose Role and Onboard",
+    detail: "Patient and provider users can sign up from the public website with role-preselected journeys.",
   },
   {
     step: "02",
-    title: "Run Consultation Flow",
-    detail: "Appointments move through consultation states with clinical and billing updates.",
+    title: "Start Care Workflow",
+    detail: "Booking, check-in, consultation progress, and documentation are managed inside persona dashboards.",
   },
   {
     step: "03",
-    title: "Handle Operations",
-    detail: "Claims, notifications, and incident/compliance actions are tracked in one desk.",
+    title: "Operate and Resolve",
+    detail: "Claims, notifications, incidents, and compliance workflows are controlled in operations modules.",
   },
   {
     step: "04",
-    title: "Govern and Scale",
-    detail: "Admin views full audit logs, KPIs, permissions, and platform-wide operational health.",
+    title: "Monitor and Govern",
+    detail: "Admins review KPIs, resolve events, and maintain policy-level visibility via audit and permissions.",
   },
 ];
 
 const CMS_BLOCKS = [
-  {
-    title: "Hero + Banner Block",
-    description: "Show campaign messaging, seasonal care programs, or hospital announcements.",
-  },
-  {
-    title: "Service Module Blocks",
-    description: "Highlight specialties like General Medicine, Pediatrics, Mental Health, and Follow-up Care.",
-  },
-  {
-    title: "Trust + Compliance Blocks",
-    description: "Display security statements, certifications, and patient-first governance highlights.",
-  },
-  {
-    title: "Testimonials + Case Blocks",
-    description: "Show outcomes, provider testimonials, and implementation success snapshots.",
-  },
-  {
-    title: "FAQ + Knowledge Blocks",
-    description: "Answer common onboarding, consultation, payment, and support questions.",
-  },
-  {
-    title: "CTA Conversion Blocks",
-    description: "Drive users to sign in, sign up, book demo, or contact hospital operations.",
-  },
+  "Hero campaigns and announcement ribbons",
+  "Service specialization blocks and outcome stories",
+  "Care journey explainers with CTA rails",
+  "Trust, compliance, and accreditation panels",
+  "FAQ and knowledge-center style sections",
+  "Case studies, testimonials, and conversion blocks",
 ];
 
 const FAQS = [
   {
-    question: "Can hospitals run multiple provider teams on this platform?",
+    question: "Is this platform suitable for enterprise hospital demos?",
     answer:
-      "Yes. The system is designed for enterprise usage with provider-level workflows, role control, and admin oversight.",
+      "Yes. The UX and workflows are designed for enterprise walkthroughs across patient care, provider execution, and admin operations.",
   },
   {
-    question: "Does it support both clinical and operational workflows?",
+    question: "Can patient and provider signup be separated from the homepage?",
     answer:
-      "Yes. It covers consultations, prescriptions, care orders, billing, claims, notifications, incidents, and audit logs.",
+      "Yes. Dedicated role-specific signup links are already wired from this page and can be routed from campaigns or partner portals.",
   },
   {
-    question: "How are access controls handled?",
+    question: "Does this include legal pages and policy navigation?",
     answer:
-      "Role-based access plus Supabase Row Level Security policies are used so each user sees only permitted records.",
+      "Yes. About, Terms, and Privacy pages are now available from the top navigation and footer CMS links.",
   },
   {
-    question: "Can patients and providers register directly?",
+    question: "Is contact and office address available on the site?",
     answer:
-      "Yes. Public sign-up buttons can preselect Patient or Provider and send users directly into their role journey.",
+      "Yes. Footer includes company address, support email, and phone details for customer-facing communication.",
   },
 ];
 
@@ -156,204 +159,215 @@ export default async function Home() {
   }
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_10%_10%,rgba(34,211,238,0.2),transparent_32%),radial-gradient(circle_at_88%_12%,rgba(16,185,129,0.18),transparent_36%),radial-gradient(circle_at_52%_95%,rgba(59,130,246,0.16),transparent_40%),linear-gradient(170deg,#f5fcff_0%,#ecf8ff_52%,#e9fbf3_100%)] pb-16 text-slate-900">
-      <header className="sticky top-0 z-50 border-b border-white/70 bg-white/84 backdrop-blur-xl">
-        <div className="mx-auto flex w-full max-w-[1480px] items-center justify-between gap-3 px-4 py-3 sm:px-6">
-          <Link href="/" className="flex items-center gap-2">
-            <span className="inline-flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl border border-cyan-200 bg-white">
-              <Image src="/brand/logo-mark.svg" alt="BAC Telemedicine" width={32} height={32} />
-            </span>
-            <span>
-              <span className="block text-[11px] font-semibold tracking-[0.17em] text-cyan-700">BAC TELEMEDICINE</span>
-              <span className="block text-sm font-semibold text-slate-900">Enterprise Virtual Care</span>
-            </span>
-          </Link>
+    <MarketingShell showSectionLinks>
+      <section className="mx-auto w-full max-w-[1480px] px-4 pt-8 sm:px-6 sm:pt-10">
+        <div className="grid gap-6 xl:grid-cols-[1.1fr_1fr]">
+          <article className="marketing-panel relative overflow-hidden p-6 sm:p-8">
+            <div className="absolute -left-14 -top-14 h-44 w-44 rounded-full bg-cyan-300/35 blur-3xl" />
+            <div className="absolute -bottom-20 right-8 h-56 w-56 rounded-full bg-blue-300/30 blur-3xl" />
 
-          <div className="flex flex-wrap items-center gap-2">
-            <Link
-              href="/auth/sign-in?next=/workspace"
-              className="rounded-lg border border-cyan-200 bg-white px-3 py-2 text-xs font-semibold text-cyan-800 transition hover:border-cyan-300 hover:bg-cyan-50"
-            >
-              Login
-            </Link>
-            <Link
-              href="/auth/sign-up?role=patient&next=/workspace/patient/booking"
-              className="rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-2 text-xs font-semibold text-cyan-900 transition hover:bg-cyan-100"
-            >
-              Patient Signup
-            </Link>
-            <Link
-              href="/auth/sign-up?role=provider&next=/workspace/provider/dashboard"
-              className="rounded-lg bg-gradient-to-r from-cyan-600 to-blue-600 px-3 py-2 text-xs font-semibold text-white shadow-[0_14px_30px_-18px_rgba(8,145,178,0.95)]"
-            >
-              Provider Signup
-            </Link>
-          </div>
-        </div>
-      </header>
+            <div className="relative z-10">
+              <p className="inline-flex rounded-full border border-cyan-200/80 bg-cyan-50/90 px-3 py-1 text-xs font-semibold tracking-[0.14em] text-cyan-800">
+                ENTERPRISE TELEMEDICINE WEBSITE
+              </p>
+              <h1 className="mt-4 max-w-3xl text-4xl font-extrabold leading-tight text-slate-900 sm:text-6xl">
+                Trendy One-Page Experience For Modern Healthcare Brands
+              </h1>
+              <p className="mt-4 max-w-2xl text-sm text-slate-700 sm:text-base">
+                Smooth scrolling sections, shaped visual panels, animated directional cues, and clear CMS-level navigation
+                for About, Terms, Privacy, and platform workflows.
+              </p>
 
-      <div className="mx-auto w-full max-w-[1480px] space-y-7 px-4 pt-6 sm:px-6 sm:pt-8">
-        <section className="grid gap-5 xl:grid-cols-[1.1fr_1fr]">
-          <article className="rounded-3xl border border-white/75 bg-white/88 p-6 shadow-[0_34px_90px_-55px_rgba(2,8,20,0.9)] backdrop-blur sm:p-8">
-            <span className="inline-flex rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1 text-xs font-semibold tracking-[0.14em] text-cyan-800">
-              PLATFORM OVERVIEW
-            </span>
-            <h1 className="mt-4 text-3xl font-bold leading-tight text-slate-900 sm:text-5xl">
-              One Platform To Design, Run, and Scale Telemedicine Operations.
-            </h1>
-            <p className="mt-4 max-w-2xl text-sm text-slate-700 sm:text-base">
-              This enterprise telemedicine solution supports complete patient, provider, and admin journeys with modern
-              UX, structured workflows, and operational governance.
-            </p>
+              <div className="mt-6 grid gap-3 sm:grid-cols-3">
+                {[
+                  ["Visual Style", "Gradient depth with glass motion cards"],
+                  ["User Flow", "Clear top-to-bottom storytelling"],
+                  ["Conversion", "Role-based signup and login actions"],
+                ].map(([label, value]) => (
+                  <div key={label} className="rounded-2xl border border-slate-200/90 bg-white/90 p-3 shadow-[0_16px_34px_-28px_rgba(15,23,42,0.9)]">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.11em] text-cyan-700">{label}</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-900">{value}</p>
+                  </div>
+                ))}
+              </div>
 
-            <div className="mt-5 grid gap-3 sm:grid-cols-3">
-              {[
-                ["3 Role Workspaces", "Patient, Provider, Admin"],
-                ["Clinical + Ops", "Consultation to claims and incidents"],
-                ["Production Ready", "Secure auth, RLS, and audit history"],
-              ].map(([title, value]) => (
-                <div key={title} className="rounded-2xl border border-slate-200 bg-white p-3">
-                  <p className="text-xs font-semibold tracking-wide text-cyan-700">{title}</p>
-                  <p className="mt-1 text-sm font-semibold text-slate-900">{value}</p>
-                </div>
-              ))}
-            </div>
+              <div className="mt-7 flex flex-wrap gap-2">
+                <Link
+                  href="/auth/sign-up?role=patient&next=/workspace/patient/booking"
+                  className="rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-[0_20px_38px_-25px_rgba(8,145,178,1)]"
+                >
+                  Start Patient Journey
+                </Link>
+                <Link
+                  href="/auth/sign-up?role=provider&next=/workspace/provider/dashboard"
+                  className="rounded-xl border border-indigo-300 bg-indigo-50 px-4 py-2.5 text-sm font-semibold text-indigo-900"
+                >
+                  Start Provider Journey
+                </Link>
+                <Link
+                  href="/auth/sign-in?next=/workspace"
+                  className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700"
+                >
+                  Existing User Login
+                </Link>
+              </div>
 
-            <div className="mt-6 flex flex-wrap gap-2">
-              <Link
-                href="/auth/sign-up?role=patient&next=/workspace/patient/booking"
-                className="rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-[0_16px_36px_-22px_rgba(8,145,178,0.95)]"
-              >
-                Start As Patient
-              </Link>
-              <Link
-                href="/auth/sign-up?role=provider&next=/workspace/provider/dashboard"
-                className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-sm font-semibold text-indigo-900"
-              >
-                Start As Provider
-              </Link>
-              <Link
-                href="/auth/sign-in?next=/workspace"
-                className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700"
-              >
-                Existing User Login
-              </Link>
+              <a href="#platform" className="mt-8 inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-slate-600">
+                Scroll For Full Journey
+                <span className="marketing-arrow-down">↓</span>
+              </a>
             </div>
           </article>
 
           <HeroSlider slides={HERO_SLIDES} />
-        </section>
+        </div>
 
-        <section className="rounded-3xl border border-white/75 bg-white/90 p-6 shadow-[0_28px_82px_-55px_rgba(2,8,20,0.9)]">
+        <div className="pointer-events-none mt-5 hidden justify-center lg:flex">
+          <div className="flex flex-col items-center gap-1 text-cyan-700/80">
+            <span className="text-[10px] font-semibold uppercase tracking-[0.2em]">Flow</span>
+            <span className="h-9 w-px bg-cyan-300" />
+            <span className="marketing-arrow-down">↓</span>
+            <span className="h-9 w-px bg-cyan-300" />
+          </div>
+        </div>
+      </section>
+
+      <section id="platform" className="mx-auto mt-8 w-full max-w-[1480px] px-4 sm:px-6">
+        <div className="marketing-panel p-6 sm:p-8">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
-              <p className="text-xs font-semibold tracking-[0.14em] text-cyan-700">ROLE MODULES</p>
-              <h2 className="mt-1 text-2xl font-bold text-slate-900">User-Wise Panels Covered In This Platform</h2>
+              <p className="text-xs font-semibold uppercase tracking-[0.15em] text-cyan-700">Platform Panels</p>
+              <h2 className="mt-1 text-3xl font-bold text-slate-900">Role-Based Experience With Distinct Visual Identity</h2>
             </div>
-            <p className="max-w-xl text-sm text-slate-600">
-              Purpose-built dashboards for each user persona, aligned to real telemedicine operational needs.
+            <p className="max-w-2xl text-sm text-slate-600">
+              Each persona panel is designed for clear action hierarchy and intuitive outcomes, avoiding the old-school box
+              layout feel.
             </p>
           </div>
 
-          <div className="mt-5 grid gap-4 lg:grid-cols-3">
-            {ROLE_PANELS.map((panel) => (
-              <article key={panel.title} className="group rounded-2xl border border-slate-200 bg-white p-4 transition hover:-translate-y-0.5 hover:shadow-[0_22px_55px_-35px_rgba(15,23,42,0.95)]">
-                <p className={`inline-flex rounded-full bg-gradient-to-r ${panel.color} px-3 py-1 text-xs font-semibold tracking-[0.1em] text-white`}>
-                  {panel.title}
-                </p>
-                <div className="mt-3 space-y-2">
-                  {panel.points.map((point) => (
-                    <p key={point} className="rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-sm text-slate-700">
-                      {point}
-                    </p>
-                  ))}
+          <div className="mt-6 grid gap-4 lg:grid-cols-3">
+            {PLATFORM_PANELS.map((panel) => (
+              <article
+                key={panel.title}
+                className={`group relative overflow-hidden rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_22px_56px_-38px_rgba(15,23,42,0.9)] transition hover:-translate-y-0.5 hover:shadow-[0_28px_70px_-38px_rgba(15,23,42,0.95)]`}
+              >
+                <div className={`absolute -right-14 -top-16 h-44 w-44 rounded-full bg-gradient-to-br ${panel.glow} blur-3xl`} />
+                <div className="relative z-10">
+                  <p className="text-lg font-bold text-slate-900">{panel.title}</p>
+                  <p className="mt-1 text-sm text-slate-600">{panel.subtitle}</p>
+                  <div className="mt-4 space-y-2">
+                    {panel.points.map((point) => (
+                      <p key={point} className="rounded-xl border border-slate-200 bg-slate-50/85 px-3 py-2 text-sm text-slate-700">
+                        {point}
+                      </p>
+                    ))}
+                  </div>
                 </div>
               </article>
             ))}
           </div>
-        </section>
+        </div>
+      </section>
 
-        <section className="grid gap-4 xl:grid-cols-[1fr_1.05fr]">
-          <article className="rounded-3xl border border-white/75 bg-white/90 p-6 shadow-[0_24px_70px_-48px_rgba(2,8,20,0.95)]">
-            <p className="text-xs font-semibold tracking-[0.14em] text-cyan-700">HOW IT WORKS</p>
-            <h2 className="mt-1 text-2xl font-bold text-slate-900">Complete Journey In Four Stages</h2>
-            <div className="mt-4 space-y-3">
-              {HOW_IT_WORKS.map((item) => (
-                <div key={item.step} className="rounded-2xl border border-slate-200 bg-white p-4">
-                  <div className="flex items-center gap-3">
-                    <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-cyan-100 text-xs font-bold text-cyan-800">
-                      {item.step}
-                    </span>
-                    <p className="text-base font-semibold text-slate-900">{item.title}</p>
-                  </div>
-                  <p className="mt-2 text-sm text-slate-600">{item.detail}</p>
-                </div>
-              ))}
-            </div>
-          </article>
-
-          <article className="rounded-3xl border border-white/75 bg-white/90 p-6 shadow-[0_24px_70px_-48px_rgba(2,8,20,0.95)]">
-            <p className="text-xs font-semibold tracking-[0.14em] text-cyan-700">CMS / CONTENT BLOCKS</p>
-            <h2 className="mt-1 text-2xl font-bold text-slate-900">Front Website Sections You Can Manage</h2>
+      <section id="journey" className="mx-auto mt-8 w-full max-w-[1480px] px-4 sm:px-6">
+        <div className="grid gap-4 xl:grid-cols-[1fr_1.05fr]">
+          <article className="marketing-panel p-6 sm:p-8">
+            <p className="text-xs font-semibold uppercase tracking-[0.15em] text-cyan-700">How It Works</p>
+            <h2 className="mt-1 text-3xl font-bold text-slate-900">Guided Step Flow With Directional Motion Cues</h2>
             <p className="mt-2 text-sm text-slate-600">
-              The website uses reusable block-style panels so your content team can continuously update messaging.
+              The section below uses top-to-bottom flow language and motion cues so users always understand where to move next.
             </p>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              {CMS_BLOCKS.map((block) => (
-                <div key={block.title} className="rounded-2xl border border-slate-200 bg-white p-3">
-                  <p className="text-sm font-semibold text-slate-900">{block.title}</p>
-                  <p className="mt-1 text-xs text-slate-600">{block.description}</p>
+            <div className="mt-5 space-y-3">
+              {JOURNEY_STEPS.map((item, index) => (
+                <div key={item.step}>
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_14px_34px_-28px_rgba(15,23,42,0.85)]">
+                    <div className="flex items-center gap-3">
+                      <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-cyan-100 text-xs font-bold text-cyan-800">
+                        {item.step}
+                      </span>
+                      <p className="text-base font-semibold text-slate-900">{item.title}</p>
+                    </div>
+                    <p className="mt-2 text-sm text-slate-600">{item.detail}</p>
+                  </div>
+                  {index < JOURNEY_STEPS.length - 1 ? (
+                    <div className="flex justify-center py-1.5">
+                      <span className="marketing-arrow-down text-cyan-700">↓</span>
+                    </div>
+                  ) : null}
                 </div>
               ))}
             </div>
           </article>
-        </section>
 
-        <section className="rounded-3xl border border-white/75 bg-white/92 p-6 shadow-[0_24px_70px_-48px_rgba(2,8,20,0.95)]">
-          <p className="text-xs font-semibold tracking-[0.14em] text-cyan-700">FAQS</p>
-          <h2 className="mt-1 text-2xl font-bold text-slate-900">Frequently Asked Questions</h2>
-          <div className="mt-4 space-y-2">
+          <article id="cms" className="marketing-panel p-6 sm:p-8">
+            <p className="text-xs font-semibold uppercase tracking-[0.15em] text-cyan-700">CMS Block Sections</p>
+            <h2 className="mt-1 text-3xl font-bold text-slate-900">Website Content Blocks Built For Product Marketing</h2>
+            <div className="mt-4 grid gap-2 sm:grid-cols-2">
+              {CMS_BLOCKS.map((item) => (
+                <div key={item} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700">
+                  {item}
+                </div>
+              ))}
+            </div>
+            <div className="mt-4 rounded-2xl border border-cyan-200 bg-cyan-50/70 p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.11em] text-cyan-800">CMS Navigation Ready</p>
+              <p className="mt-1 text-sm text-cyan-900">
+                About, Terms, and Privacy are available from top menu and footer so legal and trust content is always one click away.
+              </p>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section id="faq" className="mx-auto mt-8 w-full max-w-[1480px] px-4 sm:px-6">
+        <div className="marketing-panel p-6 sm:p-8">
+          <p className="text-xs font-semibold uppercase tracking-[0.15em] text-cyan-700">FAQs</p>
+          <h2 className="mt-1 text-3xl font-bold text-slate-900">Frequently Asked Questions</h2>
+          <div className="mt-5 space-y-2">
             {FAQS.map((item) => (
               <details key={item.question} className="group rounded-2xl border border-slate-200 bg-white p-4 open:border-cyan-200 open:bg-cyan-50/40">
-                <summary className="cursor-pointer list-none text-sm font-semibold text-slate-900">
-                  {item.question}
-                </summary>
+                <summary className="cursor-pointer list-none text-sm font-semibold text-slate-900">{item.question}</summary>
                 <p className="mt-2 text-sm text-slate-700">{item.answer}</p>
               </details>
             ))}
           </div>
-        </section>
+        </div>
+      </section>
 
-        <section className="rounded-3xl border border-cyan-200 bg-gradient-to-r from-cyan-600 to-blue-700 p-6 text-white shadow-[0_34px_92px_-52px_rgba(14,116,144,0.95)] sm:p-8">
-          <p className="text-xs font-semibold tracking-[0.16em] text-white/90">READY TO USE</p>
-          <h2 className="mt-2 text-3xl font-bold">Start Your Telemedicine Platform Journey</h2>
-          <p className="mt-2 max-w-3xl text-sm text-white/90 sm:text-base">
-            Use patient/provider onboarding links to begin immediately, or log in with existing credentials to access full
-            role-based dashboards.
-          </p>
-          <div className="mt-5 flex flex-wrap gap-2">
-            <Link
-              href="/auth/sign-up?role=patient&next=/workspace/patient/booking"
-              className="rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-cyan-800"
-            >
-              Signup Patient
-            </Link>
-            <Link
-              href="/auth/sign-up?role=provider&next=/workspace/provider/dashboard"
-              className="rounded-xl border border-white/40 bg-white/15 px-4 py-2.5 text-sm font-semibold text-white"
-            >
-              Signup Provider
-            </Link>
-            <Link
-              href="/auth/sign-in?next=/workspace"
-              className="rounded-xl border border-white/40 bg-white/15 px-4 py-2.5 text-sm font-semibold text-white"
-            >
-              Login
-            </Link>
+      <section className="mx-auto mt-8 w-full max-w-[1480px] px-4 sm:px-6">
+        <div className="relative overflow-hidden rounded-[30px] border border-cyan-200 bg-gradient-to-r from-cyan-600 via-blue-600 to-indigo-700 p-6 text-white shadow-[0_34px_90px_-54px_rgba(14,116,144,1)] sm:p-8">
+          <div className="absolute -left-8 -top-12 h-44 w-44 rounded-full bg-white/25 blur-2xl" />
+          <div className="absolute -bottom-10 right-4 h-52 w-52 rounded-full bg-white/15 blur-2xl" />
+          <div className="relative z-10">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/90">Ready For Demo</p>
+            <h2 className="mt-2 text-3xl font-bold">Launch Signup and Start Telemedicine Journeys</h2>
+            <p className="mt-2 max-w-3xl text-sm text-white/90 sm:text-base">
+              Modern visual style, smooth navigation, legal pages, and complete contact footer are now integrated for customer-ready sharing.
+            </p>
+            <div className="mt-5 flex flex-wrap gap-2">
+              <Link
+                href="/auth/sign-up?role=patient&next=/workspace/patient/booking"
+                className="rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-cyan-900"
+              >
+                Signup Patient
+              </Link>
+              <Link
+                href="/auth/sign-up?role=provider&next=/workspace/provider/dashboard"
+                className="rounded-xl border border-white/45 bg-white/12 px-4 py-2.5 text-sm font-semibold text-white"
+              >
+                Signup Provider
+              </Link>
+              <Link
+                href="/auth/sign-in?next=/workspace"
+                className="rounded-xl border border-white/45 bg-white/12 px-4 py-2.5 text-sm font-semibold text-white"
+              >
+                Login
+              </Link>
+            </div>
           </div>
-        </section>
-      </div>
-    </main>
+        </div>
+      </section>
+    </MarketingShell>
   );
 }
 

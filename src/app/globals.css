@@ -20,6 +20,10 @@
   --font-mono: "Consolas", "Courier New", monospace;
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
 body {
   background:
     radial-gradient(circle at 8% 10%, rgba(14, 165, 233, 0.2), transparent 36%),
@@ -29,6 +33,104 @@ body {
   color: var(--foreground);
   font-family: var(--font-sans);
   min-height: 100vh;
+}
+
+@keyframes marketing-float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes marketing-arrow {
+  0%, 100% {
+    transform: translateY(0);
+    opacity: 0.65;
+  }
+  50% {
+    transform: translateY(7px);
+    opacity: 1;
+  }
+}
+
+.marketing-bg {
+  background:
+    radial-gradient(circle at 12% 10%, rgba(8, 145, 178, 0.18), transparent 34%),
+    radial-gradient(circle at 84% 14%, rgba(16, 185, 129, 0.17), transparent 36%),
+    radial-gradient(circle at 52% 96%, rgba(59, 130, 246, 0.15), transparent 44%),
+    linear-gradient(170deg, #f7fdff 0%, #ebf7ff 52%, #e8f9f0 100%);
+}
+
+.marketing-orb {
+  pointer-events: none;
+  position: fixed;
+  z-index: 0;
+  border-radius: 999px;
+  filter: blur(70px);
+  opacity: 0.55;
+  animation: marketing-float 8s ease-in-out infinite;
+}
+
+.marketing-orb-a {
+  left: -70px;
+  top: 98px;
+  height: 220px;
+  width: 220px;
+  background: rgba(34, 211, 238, 0.45);
+}
+
+.marketing-orb-b {
+  right: -72px;
+  top: 140px;
+  height: 230px;
+  width: 230px;
+  background: rgba(99, 102, 241, 0.38);
+  animation-delay: 1.2s;
+}
+
+.marketing-orb-c {
+  left: 38%;
+  bottom: 35px;
+  height: 190px;
+  width: 190px;
+  background: rgba(52, 211, 153, 0.3);
+  animation-delay: 2s;
+}
+
+.marketing-panel {
+  position: relative;
+  z-index: 1;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(12px);
+  border-radius: 30px;
+  box-shadow: 0 34px 92px -58px rgba(2, 8, 20, 0.95);
+}
+
+.marketing-nav-link {
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(255, 255, 255, 0.72);
+  padding: 0.5rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #334155;
+  transition: all 180ms ease;
+}
+
+.marketing-nav-link:hover {
+  border-color: rgba(14, 116, 144, 0.35);
+  background: rgba(236, 254, 255, 0.8);
+  color: #155e75;
+}
+
+.marketing-arrow-down {
+  display: inline-flex;
+  font-size: 1rem;
+  line-height: 1;
+  animation: marketing-arrow 1.3s ease-in-out infinite;
 }
 
 .prototype-bg {
