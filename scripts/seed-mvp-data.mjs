@@ -146,6 +146,11 @@ function buildFutureIso(hoursAhead) {
   return d.toISOString();
 }
 
+function buildMeetingUrl(appointmentId) {
+  const room = `bac-telemedi-${String(appointmentId).replaceAll("-", "").slice(0, 16)}`;
+  return `https://meet.jit.si/${room}`;
+}
+
 async function ensureSeedAppointments(patientClient, patientId, providerId) {
   const existing = await patientClient
     .from("appointments")
@@ -218,7 +223,7 @@ async function updateProviderQueueStates(providerClient, providerId, seedAppoint
 async function readSeedAppointments(patientClient, patientId, providerId) {
   const seedRows = await patientClient
     .from("appointments")
-    .select("id,status,reason,scheduled_at,patient_id,provider_id")
+    .select("id,status,reason,scheduled_at,patient_id,provider_id,meeting_url")
     .eq("patient_id", patientId)
     .eq("provider_id", providerId)
     .ilike("reason", "MVP Seed%")
@@ -230,6 +235,20 @@ async function readSeedAppointments(patientClient, patientId, providerId) {
   }
 
   return seedRows.data || [];
+}
+
+async function ensureMeetingLinks(providerClient, providerId, appointments) {
+  for (const appointment of appointments) {
+    if (appointment.meeting_url) continue;
+    const update = await providerClient
+      .from("appointments")
+      .update({ meeting_url: buildMeetingUrl(appointment.id) })
+      .eq("id", appointment.id)
+      .eq("provider_id", providerId);
+    if (update.error) {
+      throw new Error(`appointments meeting_url update failed: ${update.error.message}`);
+    }
+  }
 }
 
 async function ensureClinicalArtifacts(providerClient, patientId, providerId, appointments) {
@@ -895,6 +914,7 @@ async function main() {
   const initialSeedAppointments = await ensureSeedAppointments(patient.client, patient.user.id, provider.user.id);
   await updateProviderQueueStates(provider.client, provider.user.id, initialSeedAppointments);
   const seedAppointments = await readSeedAppointments(patient.client, patient.user.id, provider.user.id);
+  await ensureMeetingLinks(provider.client, provider.user.id, seedAppointments);
   let phaseASeeded = true;
   let phaseAWarning = null;
   try {

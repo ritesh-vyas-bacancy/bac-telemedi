@@ -1,36 +1,53 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f3fbff;
+  --foreground: #0b2539;
+  --surface: rgba(255, 255, 255, 0.86);
+  --surface-strong: rgba(255, 255, 255, 0.94);
+  --surface-border: rgba(14, 116, 144, 0.16);
+  --shadow-soft: 0 20px 60px -38px rgba(8, 47, 73, 0.72);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: "Trebuchet MS", "Lucida Sans Unicode", "Segoe UI", sans-serif;
+  --font-sans: "Manrope", "Nunito Sans", "Trebuchet MS", "Lucida Sans Unicode", sans-serif;
   --font-mono: "Consolas", "Courier New", monospace;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
-  background: var(--background);
+  background:
+    radial-gradient(circle at 8% 10%, rgba(14, 165, 233, 0.2), transparent 36%),
+    radial-gradient(circle at 86% 18%, rgba(16, 185, 129, 0.2), transparent 38%),
+    radial-gradient(circle at 52% 92%, rgba(96, 165, 250, 0.16), transparent 45%),
+    linear-gradient(170deg, #f6fdff 0%, #edf9ff 48%, #ecfaf4 100%);
   color: var(--foreground);
   font-family: var(--font-sans);
+  min-height: 100vh;
 }
 
 .prototype-bg {
   background:
-    radial-gradient(circle at 12% 10%, rgba(14, 165, 233, 0.18), transparent 42%),
-    radial-gradient(circle at 84% 12%, rgba(13, 148, 136, 0.2), transparent 45%),
-    radial-gradient(circle at 50% 92%, rgba(147, 197, 253, 0.2), transparent 44%),
-    linear-gradient(170deg, #f7fcff 0%, #eef8fb 44%, #e9f7f3 100%);
+    radial-gradient(circle at 12% 10%, rgba(14, 165, 233, 0.2), transparent 42%),
+    radial-gradient(circle at 84% 12%, rgba(20, 184, 166, 0.24), transparent 44%),
+    radial-gradient(circle at 50% 92%, rgba(59, 130, 246, 0.2), transparent 44%),
+    linear-gradient(170deg, #f9fdff 0%, #eff9ff 46%, #ebfaf3 100%);
+  position: relative;
+}
+
+.prototype-bg::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: linear-gradient(
+    to right,
+    rgba(125, 211, 252, 0.08) 1px,
+    transparent 1px
+  );
+  background-size: 44px 44px;
+  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.45), transparent 78%);
 }
 
 @keyframes rise {
@@ -45,5 +62,46 @@ body {
 }
 
 .animate-rise {
-  animation: rise 260ms ease-out;
+  animation: rise 320ms ease-out;
+}
+
+.telemed-glass {
+  border: 1px solid var(--surface-border);
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(12px);
+}
+
+.workspace-main [class*="bg-white"] {
+  border-color: var(--surface-border);
+  backdrop-filter: blur(8px);
+  box-shadow: var(--shadow-soft);
+}
+
+.workspace-main [class*="border-slate-200"],
+.workspace-main [class*="border-slate-300"] {
+  border-color: rgba(8, 145, 178, 0.2);
+}
+
+.workspace-main input,
+.workspace-main select,
+.workspace-main textarea {
+  border-color: rgba(8, 145, 178, 0.28);
+  background: var(--surface-strong);
+}
+
+.workspace-main button[type="submit"] {
+  border-color: transparent;
+  background-image: linear-gradient(to right, #0891b2, #2563eb);
+  color: #fff;
+}
+
+.workspace-main button[type="submit"]:hover {
+  filter: brightness(1.05);
+}
+
+.workspace-main a[href^="/workspace/call/"] {
+  border-color: rgba(37, 99, 235, 0.24);
+  background: rgba(219, 234, 254, 0.72);
+  color: #1e40af;
 }

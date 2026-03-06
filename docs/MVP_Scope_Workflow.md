@@ -2,7 +2,8 @@
 
 ## 1) Product objective
 
-Deliver a demo-ready telemedicine platform that validates real operational value across three personas:
+Deliver a demo-ready telemedicine platform that validates real operational value across three personas.
+This objective is completed in the current build:
 - Patient
 - Provider
 - Admin
@@ -125,11 +126,11 @@ Migration files:
 - Ownership checks on write actions
 - Audit logs for major state transitions
 
-## 8) Current out-of-scope
+## 8) Optional enterprise extensions after MVP
 
-- Real-time media (WebRTC/video transport)
-- Payment gateway settlement integrations (current billing is demo simulation)
-- Production SRE stack (full observability, on-call automation, DR drills)
+- Managed real-time media stack (self-hosted WebRTC/SFU beyond current embedded teleconsult room)
+- Deep payment gateway and clearing-house integrations (beyond current billing/claims workflow)
+- Enterprise SRE stack (advanced observability, DR exercises, automated incident response)
 
 ## 9) Demo value summary
 

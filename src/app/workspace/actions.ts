@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireProfile } from "@/lib/auth/session";
+import { buildMeetingRoom, buildMeetingUrl } from "@/lib/telemedicine/meeting";
 
 const APPOINTMENT_STATUS = ["booked", "in_progress", "completed", "cancelled", "no_show"] as const;
 type AppointmentStatus = (typeof APPOINTMENT_STATUS)[number];
@@ -163,12 +164,20 @@ export async function bookAppointmentAction(formData: FormData) {
     );
   }
 
+  const meetingUrl = buildMeetingUrl(appointment.id);
+
+  await supabase
+    .from("appointments")
+    .update({ meeting_url: meetingUrl })
+    .eq("id", appointment.id);
+
   await supabase.from("consultation_sessions").upsert(
     {
       appointment_id: appointment.id,
       patient_id: user.id,
       provider_id: providerId,
       status: "scheduled",
+      room_name: buildMeetingRoom(appointment.id),
     },
     { onConflict: "appointment_id" },
   );
@@ -192,6 +201,7 @@ export async function bookAppointmentAction(formData: FormData) {
     metadata: {
       provider_id: providerId,
       scheduled_at: scheduledAt,
+      meeting_url: meetingUrl,
     },
   });
 

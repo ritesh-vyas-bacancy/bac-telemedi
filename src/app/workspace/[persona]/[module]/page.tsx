@@ -1127,9 +1127,9 @@ export default async function ModuleWorkspacePage({
   }
 
   return (
-    <main className="prototype-bg min-h-[calc(100vh-60px)] px-4 py-5 sm:px-8 sm:py-8">
-      <div className="mx-auto w-full max-w-7xl space-y-5 animate-rise">
-        <section className="rounded-3xl border border-white/80 bg-white/85 p-5 shadow-[0_22px_65px_-45px_rgba(2,8,20,0.9)] backdrop-blur sm:p-7">
+    <main className="prototype-bg workspace-main min-h-[calc(100vh-60px)] px-3 py-5 sm:px-6 sm:py-8">
+      <div className="mx-auto w-full max-w-[1600px] space-y-5 animate-rise">
+        <section className="rounded-3xl border border-cyan-100/80 bg-white/88 p-5 shadow-[0_26px_74px_-52px_rgba(2,8,20,0.9)] backdrop-blur sm:p-7">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
               <span
@@ -1144,8 +1144,8 @@ export default async function ModuleWorkspacePage({
                 {moduleConfig.description}
               </p>
             </div>
-            <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-right shadow-sm">
-              <p className="text-xs font-semibold tracking-[0.12em] text-slate-500">
+            <div className="rounded-2xl border border-cyan-100 bg-white/95 px-4 py-3 text-right shadow-[0_16px_40px_-32px_rgba(8,145,178,0.85)]">
+              <p className="text-xs font-semibold tracking-[0.12em] text-cyan-700">
                 ACTIVE USER
               </p>
               <p className="text-sm font-semibold text-slate-900">
@@ -1161,8 +1161,8 @@ export default async function ModuleWorkspacePage({
                 href={`/workspace/${persona}/${item.slug}`}
                 className={
                   item.slug === module
-                    ? "rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white"
-                    : "rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:border-slate-400"
+                    ? "rounded-lg bg-gradient-to-r from-cyan-600 to-blue-600 px-3 py-2 text-xs font-semibold text-white shadow-[0_12px_28px_-16px_rgba(8,145,178,0.95)]"
+                    : "rounded-lg border border-cyan-200 bg-white px-3 py-2 text-xs font-semibold text-cyan-800 hover:border-cyan-300"
                 }
               >
                 {item.title}
@@ -1257,7 +1257,7 @@ export default async function ModuleWorkspacePage({
                 </label>
                 <button
                   type="submit"
-                  className="mt-1 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white"
+                  className="mt-1 rounded-lg bg-gradient-to-r from-cyan-600 to-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-[0_12px_30px_-18px_rgba(8,145,178,0.95)]"
                 >
                   Confirm Appointment
                 </button>
@@ -1315,6 +1315,12 @@ export default async function ModuleWorkspacePage({
                         >
                           {statusLabel(item.status)}
                         </span>
+                        <Link
+                          href={`/workspace/call/${item.id}`}
+                          className="mt-2 inline-flex rounded-md border border-cyan-300 bg-cyan-50 px-2 py-0.5 text-xs font-semibold text-cyan-800"
+                        >
+                          Join Video Room
+                        </Link>
                       </div>
                     ))
                   )}
@@ -1384,6 +1390,12 @@ export default async function ModuleWorkspacePage({
                               Started: {formatDateTime(session.started_at)}
                             </span>
                           ) : null}
+                          <Link
+                            href={`/workspace/call/${item.id}`}
+                            className="inline-flex rounded-md border border-cyan-300 bg-cyan-50 px-2 py-0.5 text-xs font-semibold text-cyan-800"
+                          >
+                            Join Video Room
+                          </Link>
                         </div>
 
                         {(item.status === "booked" || session?.status === "scheduled" || session?.status === "ready") ? (
@@ -1683,6 +1695,12 @@ export default async function ModuleWorkspacePage({
                                 Patient ready: {formatDateTime(session.patient_ready_at)}
                               </span>
                             ) : null}
+                            <Link
+                              href={`/workspace/call/${item.id}`}
+                              className="inline-flex rounded-md border border-indigo-300 bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-800"
+                            >
+                              Open Teleconsult
+                            </Link>
                           </div>
 
                           <div className="mt-3 flex flex-wrap gap-1.5">
@@ -1806,7 +1824,7 @@ export default async function ModuleWorkspacePage({
                     />
                     <button
                       type="submit"
-                      className="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white"
+                      className="rounded-md bg-gradient-to-r from-cyan-600 to-blue-600 px-3 py-1.5 text-xs font-semibold text-white"
                     >
                       Send
                     </button>
@@ -1919,7 +1937,7 @@ export default async function ModuleWorkspacePage({
                 </label>
                 <button
                   type="submit"
-                  className="rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white"
+                  className="rounded-lg bg-gradient-to-r from-cyan-600 to-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-[0_12px_30px_-18px_rgba(8,145,178,0.95)]"
                 >
                   Save Slot
                 </button>
@@ -2068,7 +2086,7 @@ export default async function ModuleWorkspacePage({
                               />
                               <button
                                 type="submit"
-                                className="rounded-md bg-slate-900 px-2.5 py-1 text-xs font-semibold text-white"
+                                className="rounded-md bg-gradient-to-r from-cyan-600 to-blue-600 px-2.5 py-1 text-xs font-semibold text-white"
                               >
                                 Save Draft
                               </button>
@@ -2397,6 +2415,12 @@ export default async function ModuleWorkspacePage({
                               Updated {formatDateTime(session.updated_at)}
                             </span>
                           ) : null}
+                          <Link
+                            href={`/workspace/call/${item.id}`}
+                            className="inline-flex rounded-md border border-cyan-300 bg-cyan-50 px-2 py-0.5 text-xs font-semibold text-cyan-800"
+                          >
+                            Video Room
+                          </Link>
                         </div>
                         <div className="mt-2 flex flex-wrap gap-1.5">
                           {["ready", "in_consult", "completed", "cancelled"].map((state) => (
@@ -2599,7 +2623,7 @@ export default async function ModuleWorkspacePage({
                   </select>
                   <button
                     type="submit"
-                    className="rounded-md bg-slate-900 px-2.5 py-1.5 text-xs font-semibold text-white"
+                    className="rounded-md bg-gradient-to-r from-cyan-600 to-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white"
                   >
                     Create Compliance Event
                   </button>
@@ -2698,7 +2722,7 @@ export default async function ModuleWorkspacePage({
                   />
                   <button
                     type="submit"
-                    className="rounded-md bg-slate-900 px-2.5 py-1.5 text-xs font-semibold text-white"
+                    className="rounded-md bg-gradient-to-r from-cyan-600 to-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white"
                   >
                     Save Permission
                   </button>
