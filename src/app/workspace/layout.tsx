@@ -3,6 +3,7 @@ import Image from "next/image";
 import { signOutAction } from "@/app/auth/actions";
 import { requireProfile } from "@/lib/auth/session";
 import { getDefaultModuleByRole } from "@/lib/workspace/config";
+import { FormSubmitGuard } from "@/components/workspace/form-submit-guard";
 
 type WorkspaceLayoutProps = {
   children: React.ReactNode;
@@ -14,6 +15,7 @@ export default async function WorkspaceLayout({ children }: WorkspaceLayoutProps
 
   return (
     <div className="min-h-screen">
+      <FormSubmitGuard />
       <header className="sticky top-0 z-50 border-b border-cyan-100 bg-white/90 backdrop-blur-xl">
         <div className="mx-auto flex w-full max-w-[1700px] items-center justify-between gap-3 px-4 py-3 sm:px-6">
           <div className="flex items-center gap-3">

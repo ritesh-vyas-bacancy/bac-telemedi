@@ -45,16 +45,22 @@ const DEMO_USERS = [
     role: "patient",
     email: process.env.MVP_PATIENT_EMAIL || `patient.${DEMO_TAG}@bac-telemedi.demo`,
     fullName: "Riya Mehta",
+    phone: "+91 98765 41001",
+    avatarUrl: "https://images.unsplash.com/photo-1544723795-3fb6469f5b39?auto=format&fit=crop&w=200&q=80",
   },
   {
     role: "provider",
     email: process.env.MVP_PROVIDER_EMAIL || `provider.${DEMO_TAG}@bac-telemedi.demo`,
     fullName: "Dr. Arjun Rao",
+    phone: "+91 98765 42002",
+    avatarUrl: "https://images.unsplash.com/photo-1612531385446-f7b6b8f5a2f4?auto=format&fit=crop&w=200&q=80",
   },
   {
     role: "admin",
     email: process.env.MVP_ADMIN_EMAIL || `admin.${DEMO_TAG}@bac-telemedi.demo`,
     fullName: "Ananya Singh",
+    phone: "+91 98765 43003",
+    avatarUrl: "https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?auto=format&fit=crop&w=200&q=80",
   },
 ];
 
@@ -70,7 +76,7 @@ function isMissingRelationError(error) {
   return msg.includes("could not find the table") || msg.includes("does not exist");
 }
 
-async function getAuthedClient({ email, role, fullName, password }) {
+async function getAuthedClient({ email, role, fullName, phone, avatarUrl, password }) {
   const client = createClient(supabaseUrl, supabaseAnonKey, {
     auth: {
       persistSession: false,
@@ -110,6 +116,8 @@ async function getAuthedClient({ email, role, fullName, password }) {
     id: user.id,
     role,
     full_name: fullName,
+    phone,
+    avatar_url: avatarUrl,
   });
 
   if (upsertProfile.error) {

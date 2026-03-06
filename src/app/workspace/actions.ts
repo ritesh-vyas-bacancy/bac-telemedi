@@ -1764,3 +1764,94 @@ export async function upsertRolePermissionAction(formData: FormData) {
   revalidatePath(returnTo);
   redirect(`${returnTo}?success=${encodeURIComponent("Role permission updated.")}`);
 }
+
+export async function updateProfileSettingsAction(formData: FormData) {
+  const returnTo = safePath(String(formData.get("return_to") ?? "/workspace/patient/settings"));
+  const fullName = safeText(formData.get("full_name"));
+  const phone = safeText(formData.get("phone"));
+  const avatarUrl = safeText(formData.get("avatar_url"));
+
+  if (avatarUrl && !/^https?:\/\//i.test(avatarUrl)) {
+    redirect(`${returnTo}?error=${encodeURIComponent("Avatar URL must start with http:// or https://")}`);
+  }
+
+  const { supabase, user } = await requireProfile(returnTo);
+
+  const { error } = await supabase
+    .from("profiles")
+    .update({
+      full_name: fullName,
+      phone,
+      avatar_url: avatarUrl,
+    })
+    .eq("id", user.id);
+
+  if (error) {
+    redirect(`${returnTo}?error=${encodeURIComponent(error.message)}`);
+  }
+
+  // Keep auth metadata aligned so account bootstrap and profile remain consistent.
+  const { error: authError } = await supabase.auth.updateUser({
+    data: {
+      full_name: fullName ?? "",
+    },
+  });
+
+  if (authError) {
+    redirect(`${returnTo}?error=${encodeURIComponent(authError.message)}`);
+  }
+
+  await supabase.from("audit_logs").insert({
+    actor_id: user.id,
+    action: "profile.updated",
+    entity_type: "profiles",
+    entity_id: user.id,
+    metadata: {
+      full_name: fullName,
+      phone,
+      avatar_url: avatarUrl,
+    },
+  });
+
+  revalidatePath(returnTo);
+  revalidatePath("/workspace");
+  redirect(`${returnTo}?success=${encodeURIComponent("Profile updated successfully.")}`);
+}
+
+export async function updatePasswordSettingsAction(formData: FormData) {
+  const returnTo = safePath(String(formData.get("return_to") ?? "/workspace/patient/settings"));
+  const newPassword = String(formData.get("new_password") ?? "");
+  const confirmPassword = String(formData.get("confirm_password") ?? "");
+
+  if (!newPassword || !confirmPassword) {
+    redirect(`${returnTo}?error=${encodeURIComponent("Enter and confirm your new password.")}`);
+  }
+
+  if (newPassword.length < 8) {
+    redirect(`${returnTo}?error=${encodeURIComponent("Password must be at least 8 characters long.")}`);
+  }
+
+  if (newPassword !== confirmPassword) {
+    redirect(`${returnTo}?error=${encodeURIComponent("Password confirmation does not match.")}`);
+  }
+
+  const { supabase, user } = await requireProfile(returnTo);
+  const { error } = await supabase.auth.updateUser({ password: newPassword });
+
+  if (error) {
+    redirect(`${returnTo}?error=${encodeURIComponent(error.message)}`);
+  }
+
+  await supabase.from("audit_logs").insert({
+    actor_id: user.id,
+    action: "auth.password_updated",
+    entity_type: "auth.users",
+    entity_id: user.id,
+    metadata: {
+      changed_via: "workspace_settings",
+    },
+  });
+
+  revalidatePath(returnTo);
+  redirect(`${returnTo}?success=${encodeURIComponent("Password updated successfully.")}`);
+}

@@ -20,6 +20,8 @@ import {
   updateClaimStatusAction,
   updateIncidentReportAction,
   updateConsultationStatusAction,
+  updatePasswordSettingsAction,
+  updateProfileSettingsAction,
   updateAppointmentStatusAction,
   upsertRolePermissionAction,
   resolveComplianceEventAction,
@@ -226,6 +228,16 @@ type RolePermissionRow = {
   permission_key: string;
   description: string | null;
   created_at: string;
+};
+
+type AccountProfileRow = {
+  id: string;
+  role: Persona;
+  full_name: string | null;
+  phone: string | null;
+  avatar_url: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 type StatusSummary = {
@@ -440,6 +452,15 @@ const MODULE_GUIDANCE: Record<
       "Use this page to verify communication quality after admin/provider actions.",
     ],
   },
+  "patient:settings": {
+    title: "Patient Profile & Security Flow",
+    summary: "Manage your contact details and keep account access secure.",
+    tips: [
+      "Update phone and avatar URL so care team contacts stay accurate.",
+      "Use a strong password and rotate it periodically.",
+      "Profile updates apply instantly across the workspace header and modules.",
+    ],
+  },
   "provider:dashboard": {
     title: "Provider Queue Flow",
     summary: "Run consultations, submit claims, and send patient notifications from one board.",
@@ -467,6 +488,15 @@ const MODULE_GUIDANCE: Record<
       "Use due-date fields to keep follow-up tasks visible in patient module.",
     ],
   },
+  "provider:settings": {
+    title: "Provider Profile & Security Flow",
+    summary: "Keep provider profile details current and secure account credentials.",
+    tips: [
+      "Ensure display name and phone are accurate for patient trust.",
+      "Use profile image URL for consistent provider identity across modules.",
+      "Change password from this screen to keep access protected.",
+    ],
+  },
   "admin:pulse": {
     title: "Admin Monitoring Flow",
     summary: "Monitor utilization, active sessions, billing, and operational health.",
@@ -492,6 +522,15 @@ const MODULE_GUIDANCE: Record<
       "Use action labels and metadata to reconstruct full event context.",
       "Focus on entity id and actor id to trace responsibility.",
       "Review recent critical actions after claims/incidents are updated.",
+    ],
+  },
+  "admin:settings": {
+    title: "Admin Profile & Security Flow",
+    summary: "Maintain admin contact details and secure privileged access.",
+    tips: [
+      "Keep admin contact fields current for escalation workflows.",
+      "Use strong password rotation for high-privilege accounts.",
+      "Profile updates here are reflected in the workspace identity panel.",
     ],
   },
 };
@@ -542,6 +581,7 @@ export default async function ModuleWorkspacePage({
   let complianceEvents: ComplianceEventRow[] = [];
   let incidents: IncidentReportRow[] = [];
   let rolePermissions: RolePermissionRow[] = [];
+  let accountProfile: AccountProfileRow | null = null;
 
   let providerCount = 0;
   let patientCount = 0;
@@ -549,6 +589,18 @@ export default async function ModuleWorkspacePage({
   let todayAppointments: AppointmentRow[] = [];
   let unresolvedComplianceCount = 0;
   let openIncidentCount = 0;
+
+  if (module === "settings") {
+    const { data: profileRow, error: profileError } = await supabase
+      .from("profiles")
+      .select("id,role,full_name,phone,avatar_url,created_at,updated_at")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    accountProfile = (profileRow as AccountProfileRow | null) ?? null;
+    dbError = profileError?.message ?? dbError;
+  }
+
   if (persona === "patient") {
     if (module === "booking") {
       const [
@@ -1289,6 +1341,125 @@ export default async function ModuleWorkspacePage({
         {migrationWarning ? (
           <section className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
             {migrationWarning}
+          </section>
+        ) : null}
+        {module === "settings" ? (
+          <section className="grid gap-4 xl:grid-cols-[1.25fr_1fr]">
+            <article className="rounded-2xl border border-white/70 bg-white/92 p-5 shadow-[0_16px_45px_-35px_rgba(15,23,42,0.85)]">
+              <h2 className="text-lg font-semibold text-slate-900">Profile Information</h2>
+              <p className="mt-1 text-sm text-slate-600">
+                Keep your basic details up to date so communication and identity stay consistent across the platform.
+              </p>
+
+              <div className="mt-4 grid gap-2 rounded-xl border border-slate-200 bg-slate-50/80 p-3 text-xs text-slate-700 sm:grid-cols-2">
+                <p>
+                  <span className="font-semibold text-slate-900">Role:</span>{" "}
+                  {accountProfile?.role ?? profile.role}
+                </p>
+                <p>
+                  <span className="font-semibold text-slate-900">Email:</span>{" "}
+                  {user.email ?? "Not available"}
+                </p>
+                <p>
+                  <span className="font-semibold text-slate-900">Created:</span>{" "}
+                  {accountProfile?.created_at ? formatDateTime(accountProfile.created_at) : "Not available"}
+                </p>
+                <p>
+                  <span className="font-semibold text-slate-900">Updated:</span>{" "}
+                  {accountProfile?.updated_at ? formatDateTime(accountProfile.updated_at) : "Not available"}
+                </p>
+              </div>
+
+              <form action={updateProfileSettingsAction} className="mt-4 grid gap-3">
+                <input type="hidden" name="return_to" value={currentPath} />
+                <label className="grid gap-1">
+                  <span className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-600">
+                    Full Name
+                  </span>
+                  <input
+                    name="full_name"
+                    defaultValue={accountProfile?.full_name ?? profile.full_name ?? ""}
+                    placeholder="Enter full name"
+                    className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                  />
+                </label>
+                <label className="grid gap-1">
+                  <span className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-600">
+                    Phone
+                  </span>
+                  <input
+                    name="phone"
+                    defaultValue={accountProfile?.phone ?? ""}
+                    placeholder="+91 98XXXXXXXX"
+                    className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                  />
+                </label>
+                <label className="grid gap-1">
+                  <span className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-600">
+                    Avatar URL
+                  </span>
+                  <input
+                    name="avatar_url"
+                    defaultValue={accountProfile?.avatar_url ?? ""}
+                    placeholder="https://..."
+                    className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                  />
+                </label>
+                <button
+                  type="submit"
+                  data-pending-label="Saving profile..."
+                  className="rounded-lg bg-gradient-to-r from-cyan-600 to-blue-600 px-3 py-2 text-sm font-semibold text-white"
+                >
+                  Save Profile
+                </button>
+              </form>
+            </article>
+
+            <article className="rounded-2xl border border-white/70 bg-white/92 p-5 shadow-[0_16px_45px_-35px_rgba(15,23,42,0.85)]">
+              <h2 className="text-lg font-semibold text-slate-900">Password & Security</h2>
+              <p className="mt-1 text-sm text-slate-600">
+                Change password directly from workspace. Apply a strong password with at least 8 characters.
+              </p>
+              <form action={updatePasswordSettingsAction} className="mt-4 grid gap-3">
+                <input type="hidden" name="return_to" value={currentPath} />
+                <label className="grid gap-1">
+                  <span className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-600">
+                    New Password
+                  </span>
+                  <input
+                    type="password"
+                    name="new_password"
+                    required
+                    minLength={8}
+                    placeholder="Enter new password"
+                    className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                  />
+                </label>
+                <label className="grid gap-1">
+                  <span className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-600">
+                    Confirm New Password
+                  </span>
+                  <input
+                    type="password"
+                    name="confirm_password"
+                    required
+                    minLength={8}
+                    placeholder="Confirm new password"
+                    className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                  />
+                </label>
+                <button
+                  type="submit"
+                  data-pending-label="Updating password..."
+                  className="rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-900"
+                >
+                  Update Password
+                </button>
+              </form>
+              <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50/80 p-3 text-xs text-slate-600">
+                Password updates invalidate weak credential reuse risk and are logged in audit stream.
+              </div>
+            </article>
           </section>
         ) : null}
         {persona === "patient" && module === "booking" ? (

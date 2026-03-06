@@ -34,6 +34,11 @@ export const WORKSPACE_CONFIG: Record<Persona, PersonaDefinition> = {
         title: "Care Inbox",
         description: "Review provider communication, reminders, and platform notifications.",
       },
+      {
+        slug: "settings",
+        title: "Profile & Security",
+        description: "Update your profile details and account password.",
+      },
     ],
   },
   provider: {
@@ -56,6 +61,11 @@ export const WORKSPACE_CONFIG: Record<Persona, PersonaDefinition> = {
         title: "Patient Panel",
         description: "Complete SOAP notes, prescriptions, and care orders.",
       },
+      {
+        slug: "settings",
+        title: "Profile & Security",
+        description: "Update your provider profile and account password.",
+      },
     ],
   },
   admin: {
@@ -77,6 +87,11 @@ export const WORKSPACE_CONFIG: Record<Persona, PersonaDefinition> = {
         slug: "audit",
         title: "Audit Stream",
         description: "Review tracked actions and compliance history.",
+      },
+      {
+        slug: "settings",
+        title: "Profile & Security",
+        description: "Manage admin profile details and secure account access.",
       },
     ],
   },
