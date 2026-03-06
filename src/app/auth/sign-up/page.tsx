@@ -15,6 +15,11 @@ export default async function SignUpPage({ searchParams }: SignUpPageProps) {
   const next = asString(params.next) || "/";
   const message = asString(params.message);
   const error = asString(params.error);
+  const queryRole = asString(params.role);
+  const selectedRole = queryRole === "provider" || queryRole === "admin" || queryRole === "patient"
+    ? queryRole
+    : "patient";
+  const roleLabel = selectedRole.charAt(0).toUpperCase() + selectedRole.slice(1);
 
   return (
     <main className="prototype-bg flex min-h-screen items-center px-4 py-8 sm:px-8 sm:py-12">
@@ -44,7 +49,7 @@ export default async function SignUpPage({ searchParams }: SignUpPageProps) {
 
         <section className="telemed-glass rounded-3xl p-6 sm:p-8">
           <p className="text-xs font-semibold tracking-[0.18em] text-cyan-700">AUTHENTICATION</p>
-          <h2 className="mt-2 text-3xl font-bold text-slate-900">Create Account</h2>
+          <h2 className="mt-2 text-3xl font-bold text-slate-900">Create {roleLabel} Account</h2>
           <p className="mt-1 text-sm text-slate-600">Set up access for patient, provider, or admin workspace.</p>
 
           {message ? (
@@ -95,7 +100,7 @@ export default async function SignUpPage({ searchParams }: SignUpPageProps) {
               <span className="mb-1 block text-sm font-semibold text-slate-700">Role</span>
               <select
                 name="role"
-                defaultValue="patient"
+                defaultValue={selectedRole}
                 className="w-full rounded-xl border border-cyan-200 bg-white/95 px-3 py-2.5 text-sm text-slate-800 outline-none ring-cyan-500 transition focus:ring-2"
               >
                 <option value="patient">Patient</option>
