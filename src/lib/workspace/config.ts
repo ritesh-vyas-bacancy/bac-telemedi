@@ -32,7 +32,7 @@ export const WORKSPACE_CONFIG: Record<Persona, PersonaDefinition> = {
       {
         slug: "inbox",
         title: "Care Inbox",
-        description: "Review provider communication and updates.",
+        description: "Review provider communication, reminders, and platform notifications.",
       },
     ],
   },
@@ -44,7 +44,7 @@ export const WORKSPACE_CONFIG: Record<Persona, PersonaDefinition> = {
       {
         slug: "dashboard",
         title: "Queue Dashboard",
-        description: "Manage queue, consultation state machine, and readiness flow.",
+        description: "Manage queue, consultation state machine, claims, and outbound notifications.",
       },
       {
         slug: "schedule",
@@ -71,7 +71,7 @@ export const WORKSPACE_CONFIG: Record<Persona, PersonaDefinition> = {
       {
         slug: "operations",
         title: "Operations Desk",
-        description: "Monitor latest appointments and role mix.",
+        description: "Monitor appointments, claims, incidents, compliance, and role permissions.",
       },
       {
         slug: "audit",

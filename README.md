@@ -42,6 +42,7 @@ Use Supabase SQL Editor and run:
 
 `supabase/migrations/0001_mvp_schema.sql`
 `supabase/migrations/0002_phase_a_clinical_core.sql`
+`supabase/migrations/0003_phase_bcd_foundations.sql`
 
 ## Supabase Helpers
 
@@ -58,8 +59,11 @@ Use Supabase SQL Editor and run:
 - Patient booking flow backed by live `appointments` data
 - Provider queue dashboard with consultation lifecycle controls
 - Provider clinical workbench: SOAP notes, prescriptions, care orders
+- Provider claim submission and patient notification dispatch
 - Patient visits center: check-in, billing simulation, care updates
+- Patient inbox with notification center and read acknowledgements
 - Admin pulse dashboard with appointment + consultation + billing metrics
+- Admin operations desk for claim review, compliance events, incidents, and role permissions
 
 ## Seed and QA Helpers
 

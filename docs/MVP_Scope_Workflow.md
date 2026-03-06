@@ -7,7 +7,7 @@ Deliver a demo-ready telemedicine platform that validates real operational value
 - Provider
 - Admin
 
-This version includes secure auth, role-based workflows, appointment operations, consultation lifecycle, and core clinical documentation.
+This version includes secure auth, role-based workflows, appointment operations, consultation lifecycle, core clinical documentation, and operations governance modules.
 
 ## 2) Business model (current build)
 
@@ -46,10 +46,11 @@ This version includes secure auth, role-based workflows, appointment operations,
 | Patient | Booking | Provider selection, schedule, reason, invoice seed | Live |
 | Patient | Visits | Appointment timeline, check-in, invoice pay simulation, care updates | Live |
 | Provider | Dashboard | Queue + consultation state transitions + readiness view | Live |
+| Provider | Claims + Notifications | Claim submission and patient communication events | Live |
 | Provider | Patient Panel | SOAP notes, note signing, prescription issue, care orders | Live |
 | Provider | Availability | Weekly consultation slot management | Live |
 | Admin | Pulse | Appointment + consultation + billing KPI snapshot | Live |
-| Admin | Operations | Appointment controls, consultation controls, billing overview | Live |
+| Admin | Operations | Appointment controls, claims review, compliance + incidents, permission matrix | Live |
 | Admin | Audit | Action stream and metadata trail | Live |
 | Shared | High-fidelity journey prototype | Full visual walkthrough | Live (`/prototype`) |
 
@@ -105,9 +106,17 @@ Clinical-core extensions:
 - `care_orders`
 - `billing_invoices`
 
+Operations/governance extensions:
+- `claim_submissions`
+- `notification_events`
+- `compliance_events`
+- `incident_reports`
+- `role_permissions`
+
 Migration files:
 - `supabase/migrations/0001_mvp_schema.sql`
 - `supabase/migrations/0002_phase_a_clinical_core.sql`
+- `supabase/migrations/0003_phase_bcd_foundations.sql`
 
 ## 7) Security and compliance baseline
 
@@ -120,8 +129,6 @@ Migration files:
 
 - Real-time media (WebRTC/video transport)
 - Payment gateway settlement integrations (current billing is demo simulation)
-- Insurance claims lifecycle
-- Notification campaign engine
 - Production SRE stack (full observability, on-call automation, DR drills)
 
 ## 9) Demo value summary

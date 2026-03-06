@@ -27,6 +27,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=...
 4. Run database migrations in Supabase SQL editor:
    - `supabase/migrations/0001_mvp_schema.sql`
    - `supabase/migrations/0002_phase_a_clinical_core.sql`
+   - `supabase/migrations/0003_phase_bcd_foundations.sql`
 5. Seed demo users/data:
    - `node scripts/seed-mvp-data.mjs`
 6. Start app:
@@ -53,14 +54,16 @@ Use the latest credentials printed by `scripts/seed-mvp-data.mjs`.
 3. Open `/workspace/provider/patients`.
 4. Save SOAP note draft, issue prescription, create care order.
 5. Click `Sign Note & Complete Visit`.
+6. Submit claim and send a notification from `/workspace/provider/dashboard`.
 
 ### Admin
 
 1. Open `/workspace/admin/pulse`.
 2. Verify metrics include consultation and billing signals.
 3. Open `/workspace/admin/operations`.
-4. Verify appointment, consultation, and invoice views update.
-5. Validate audit stream in `/workspace/admin/audit`.
+4. Verify appointment, consultation, invoice, and claims views update.
+5. Validate compliance events, incidents, and permission matrix actions.
+6. Validate audit stream in `/workspace/admin/audit`.
 
 ## 5) Automated QA Smoke
 
@@ -78,6 +81,8 @@ npm run qa:smoke
 
 - If you see errors like `Could not find the table 'public.consultation_sessions'`:
   - Run `0002_phase_a_clinical_core.sql` migration.
+- If you see errors like `Could not find the table 'public.claim_submissions'`:
+  - Run `0003_phase_bcd_foundations.sql` migration.
 - If sign-in fails with confirmation issue:
   - Disable confirm-email in Supabase Auth during demo.
 - If role routing is wrong:

@@ -380,8 +380,219 @@ async function ensureClinicalArtifacts(providerClient, patientId, providerId, ap
   }
 }
 
+async function ensureOperationsArtifacts(
+  providerClient,
+  adminClient,
+  patientId,
+  providerId,
+  adminId,
+  appointments,
+) {
+  const nowIso = new Date().toISOString();
+
+  for (const appointment of appointments) {
+    const claimStatus =
+      appointment.status === "completed"
+        ? "paid"
+        : appointment.status === "cancelled" || appointment.status === "no_show"
+          ? "rejected"
+          : appointment.status === "in_progress"
+            ? "under_review"
+            : "submitted";
+
+    const claimUpsert = await providerClient.from("claim_submissions").upsert(
+      {
+        appointment_id: appointment.id,
+        patient_id: patientId,
+        provider_id: providerId,
+        payer_name: "Self-pay",
+        amount_claimed: 499,
+        status: claimStatus,
+        claim_reference: `MVP-CLAIM-${appointment.id.slice(0, 8).toUpperCase()}`,
+        submitted_at: nowIso,
+        reviewed_at: claimStatus === "rejected" || claimStatus === "paid" ? nowIso : null,
+        settled_at: claimStatus === "paid" ? nowIso : null,
+        review_notes:
+          claimStatus === "rejected"
+            ? "MVP Seed: cancelled appointment not eligible."
+            : claimStatus === "paid"
+              ? "MVP Seed: paid in full."
+              : null,
+      },
+      { onConflict: "appointment_id" },
+    );
+
+    if (claimUpsert.error) {
+      throw new Error(`claim_submissions upsert failed: ${claimUpsert.error.message}`);
+    }
+  }
+
+  const existingPatientNotifications = await providerClient
+    .from("notification_events")
+    .select("id")
+    .eq("recipient_id", patientId)
+    .ilike("title", "MVP Seed:%")
+    .limit(3);
+
+  if (existingPatientNotifications.error) {
+    throw new Error(`notification_events read failed: ${existingPatientNotifications.error.message}`);
+  }
+
+  if ((existingPatientNotifications.data || []).length === 0) {
+    const providerToPatient = await providerClient.from("notification_events").insert([
+      {
+        recipient_id: patientId,
+        sender_id: providerId,
+        appointment_id: appointments[0]?.id ?? null,
+        title: "MVP Seed: Visit reminder",
+        message: "Your consultation is on schedule. Please check in 10 minutes early.",
+        channel: "in_app",
+        status: "sent",
+        sent_at: nowIso,
+      },
+      {
+        recipient_id: patientId,
+        sender_id: providerId,
+        appointment_id: appointments[1]?.id ?? null,
+        title: "MVP Seed: Claim update",
+        message: "Your claim is currently under review.",
+        channel: "in_app",
+        status: "read",
+        sent_at: nowIso,
+        read_at: nowIso,
+      },
+    ]);
+
+    if (providerToPatient.error) {
+      throw new Error(`notification_events provider insert failed: ${providerToPatient.error.message}`);
+    }
+  }
+
+  const adminNotification = await adminClient
+    .from("notification_events")
+    .select("id")
+    .eq("recipient_id", providerId)
+    .ilike("title", "MVP Seed: Admin%")
+    .limit(1);
+
+  if (adminNotification.error) {
+    throw new Error(`notification_events admin read failed: ${adminNotification.error.message}`);
+  }
+
+  if ((adminNotification.data || []).length === 0) {
+    const adminInsert = await adminClient.from("notification_events").insert({
+      recipient_id: providerId,
+      sender_id: adminId,
+      appointment_id: appointments[0]?.id ?? null,
+      title: "MVP Seed: Admin follow-up",
+      message: "Please review claim queue and compliance items.",
+      channel: "in_app",
+      status: "sent",
+      sent_at: nowIso,
+    });
+
+    if (adminInsert.error) {
+      throw new Error(`notification_events admin insert failed: ${adminInsert.error.message}`);
+    }
+  }
+
+  const complianceExisting = await providerClient
+    .from("compliance_events")
+    .select("id")
+    .eq("actor_id", providerId)
+    .ilike("event_type", "MVP Seed:%")
+    .limit(2);
+
+  if (complianceExisting.error) {
+    throw new Error(`compliance_events read failed: ${complianceExisting.error.message}`);
+  }
+
+  if ((complianceExisting.data || []).length === 0) {
+    const complianceInsert = await providerClient.from("compliance_events").insert([
+      {
+        actor_id: providerId,
+        patient_id: patientId,
+        appointment_id: appointments[0]?.id ?? null,
+        event_type: "MVP Seed: Identity confirmation",
+        risk_level: "medium",
+        details: "Patient ID validated at check-in.",
+        is_resolved: true,
+        resolved_by: adminId,
+        resolved_at: nowIso,
+      },
+      {
+        actor_id: providerId,
+        patient_id: patientId,
+        appointment_id: appointments[1]?.id ?? null,
+        event_type: "MVP Seed: Follow-up risk",
+        risk_level: "high",
+        details: "Follow-up pending provider review.",
+        is_resolved: false,
+      },
+    ]);
+
+    if (complianceInsert.error) {
+      throw new Error(`compliance_events insert failed: ${complianceInsert.error.message}`);
+    }
+  }
+
+  const incidentExisting = await adminClient
+    .from("incident_reports")
+    .select("id")
+    .ilike("title", "MVP Seed:%")
+    .limit(2);
+
+  if (incidentExisting.error) {
+    throw new Error(`incident_reports read failed: ${incidentExisting.error.message}`);
+  }
+
+  if ((incidentExisting.data || []).length === 0) {
+    const incidentInsert = await adminClient.from("incident_reports").insert([
+      {
+        title: "MVP Seed: Delayed consult join",
+        description: "Provider joined consultation room with a short delay.",
+        severity: "low",
+        status: "resolved",
+        opened_by: adminId,
+        assigned_to: providerId,
+        appointment_id: appointments[0]?.id ?? null,
+        opened_at: nowIso,
+        resolved_at: nowIso,
+        resolution_notes: "Resolved after route health verification.",
+      },
+      {
+        title: "MVP Seed: Notification dispatch lag",
+        description: "One notification dispatched with delay for test scenario.",
+        severity: "medium",
+        status: "open",
+        opened_by: adminId,
+        assigned_to: providerId,
+        appointment_id: appointments[1]?.id ?? null,
+        opened_at: nowIso,
+      },
+    ]);
+
+    if (incidentInsert.error) {
+      throw new Error(`incident_reports insert failed: ${incidentInsert.error.message}`);
+    }
+  }
+
+  const permissionUpsert = await adminClient.from("role_permissions").upsert(
+    {
+      role: "admin",
+      permission_key: "release.manage",
+      description: "Manage staged release promotion",
+    },
+    { onConflict: "role,permission_key" },
+  );
+
+  if (permissionUpsert.error) {
+    throw new Error(`role_permissions upsert failed: ${permissionUpsert.error.message}`);
+  }
+}
+
 async function verifyPatientFlow(patientClient, patientId) {
-  const [providers, appointments, sessions, invoices] = await Promise.all([
+  const [providers, appointments, sessions, invoices, claims, notifications] = await Promise.all([
     patientClient.from("profiles").select("id,full_name,role").eq("role", "provider").limit(10),
     patientClient
       .from("appointments")
@@ -401,6 +612,18 @@ async function verifyPatientFlow(patientClient, patientId) {
       .eq("patient_id", patientId)
       .order("created_at", { ascending: false })
       .limit(20),
+    patientClient
+      .from("claim_submissions")
+      .select("id,appointment_id,status,amount_claimed")
+      .eq("patient_id", patientId)
+      .order("created_at", { ascending: false })
+      .limit(20),
+    patientClient
+      .from("notification_events")
+      .select("id,status,title,created_at")
+      .eq("recipient_id", patientId)
+      .order("created_at", { ascending: false })
+      .limit(30),
   ]);
 
   if (providers.error) throw new Error(`patient providers read failed: ${providers.error.message}`);
@@ -411,23 +634,35 @@ async function verifyPatientFlow(patientClient, patientId) {
   if (invoices.error && !isMissingRelationError(invoices.error)) {
     throw new Error(`patient invoices read failed: ${invoices.error.message}`);
   }
+  if (claims.error && !isMissingRelationError(claims.error)) {
+    throw new Error(`patient claims read failed: ${claims.error.message}`);
+  }
+  if (notifications.error && !isMissingRelationError(notifications.error)) {
+    throw new Error(`patient notifications read failed: ${notifications.error.message}`);
+  }
 
   const sessionData = sessions.error ? [] : sessions.data || [];
   const invoiceData = invoices.error ? [] : invoices.data || [];
+  const claimData = claims.error ? [] : claims.data || [];
+  const notificationData = notifications.error ? [] : notifications.data || [];
 
   return {
     providerCount: (providers.data || []).length,
     appointmentCount: (appointments.data || []).length,
     consultationCount: sessionData.length,
     invoiceCount: invoiceData.length,
+    claimCount: claimData.length,
+    notificationCount: notificationData.length,
     sampleAppointments: (appointments.data || []).slice(0, 5),
     sampleConsultations: sessionData.slice(0, 5),
     sampleInvoices: invoiceData.slice(0, 3),
+    sampleClaims: claimData.slice(0, 3),
+    sampleNotifications: notificationData.slice(0, 3),
   };
 }
 
 async function verifyProviderFlow(providerClient, providerId) {
-  const [queue, sessions, notes, careOrders] = await Promise.all([
+  const [queue, sessions, notes, careOrders, claims, notifications, incidents] = await Promise.all([
     providerClient
       .from("appointments")
       .select("id,status,scheduled_at,reason,patient_id")
@@ -452,6 +687,24 @@ async function verifyProviderFlow(providerClient, providerId) {
       .eq("provider_id", providerId)
       .order("created_at", { ascending: false })
       .limit(20),
+    providerClient
+      .from("claim_submissions")
+      .select("id,appointment_id,status,amount_claimed")
+      .eq("provider_id", providerId)
+      .order("created_at", { ascending: false })
+      .limit(20),
+    providerClient
+      .from("notification_events")
+      .select("id,status,title,recipient_id,created_at")
+      .or(`sender_id.eq.${providerId},recipient_id.eq.${providerId}`)
+      .order("created_at", { ascending: false })
+      .limit(30),
+    providerClient
+      .from("incident_reports")
+      .select("id,status,severity,title")
+      .or(`opened_by.eq.${providerId},assigned_to.eq.${providerId}`)
+      .order("created_at", { ascending: false })
+      .limit(20),
   ]);
 
   if (queue.error) throw new Error(`provider queue read failed: ${queue.error.message}`);
@@ -464,29 +717,51 @@ async function verifyProviderFlow(providerClient, providerId) {
   if (careOrders.error && !isMissingRelationError(careOrders.error)) {
     throw new Error(`provider care orders read failed: ${careOrders.error.message}`);
   }
+  if (claims.error && !isMissingRelationError(claims.error)) {
+    throw new Error(`provider claims read failed: ${claims.error.message}`);
+  }
+  if (notifications.error && !isMissingRelationError(notifications.error)) {
+    throw new Error(`provider notifications read failed: ${notifications.error.message}`);
+  }
+  if (incidents.error && !isMissingRelationError(incidents.error)) {
+    throw new Error(`provider incidents read failed: ${incidents.error.message}`);
+  }
 
   const sessionData = sessions.error ? [] : sessions.data || [];
   const noteData = notes.error ? [] : notes.data || [];
   const careOrderData = careOrders.error ? [] : careOrders.data || [];
+  const claimData = claims.error ? [] : claims.data || [];
+  const notificationData = notifications.error ? [] : notifications.data || [];
+  const incidentData = incidents.error ? [] : incidents.data || [];
 
   return {
     queueCount: (queue.data || []).length,
     consultationCount: sessionData.length,
     noteCount: noteData.length,
     careOrderCount: careOrderData.length,
+    claimCount: claimData.length,
+    notificationCount: notificationData.length,
+    incidentCount: incidentData.length,
     sampleQueue: (queue.data || []).slice(0, 5),
     sampleConsultations: sessionData.slice(0, 5),
     sampleNotes: noteData.slice(0, 3),
+    sampleClaims: claimData.slice(0, 3),
+    sampleNotifications: notificationData.slice(0, 3),
   };
 }
 
 async function verifyAdminFlow(adminClient) {
-  const [profiles, appointments, sessions, notes, invoices] = await Promise.all([
+  const [profiles, appointments, sessions, notes, invoices, claims, compliance, incidents, permissions, notifications] = await Promise.all([
     adminClient.from("profiles").select("id,role", { count: "exact" }),
     adminClient.from("appointments").select("id,status", { count: "exact" }),
     adminClient.from("consultation_sessions").select("id,status", { count: "exact" }),
     adminClient.from("encounter_notes").select("id,status", { count: "exact" }),
     adminClient.from("billing_invoices").select("id,status,amount", { count: "exact" }),
+    adminClient.from("claim_submissions").select("id,status,amount_claimed", { count: "exact" }),
+    adminClient.from("compliance_events").select("id,risk_level,is_resolved", { count: "exact" }),
+    adminClient.from("incident_reports").select("id,status,severity", { count: "exact" }),
+    adminClient.from("role_permissions").select("id,role,permission_key", { count: "exact" }),
+    adminClient.from("notification_events").select("id,status,channel", { count: "exact" }),
   ]);
 
   if (profiles.error) {
@@ -504,10 +779,30 @@ async function verifyAdminFlow(adminClient) {
   if (invoices.error && !isMissingRelationError(invoices.error)) {
     throw new Error(`admin invoices read failed: ${invoices.error.message}`);
   }
+  if (claims.error && !isMissingRelationError(claims.error)) {
+    throw new Error(`admin claims read failed: ${claims.error.message}`);
+  }
+  if (compliance.error && !isMissingRelationError(compliance.error)) {
+    throw new Error(`admin compliance read failed: ${compliance.error.message}`);
+  }
+  if (incidents.error && !isMissingRelationError(incidents.error)) {
+    throw new Error(`admin incidents read failed: ${incidents.error.message}`);
+  }
+  if (permissions.error && !isMissingRelationError(permissions.error)) {
+    throw new Error(`admin role permissions read failed: ${permissions.error.message}`);
+  }
+  if (notifications.error && !isMissingRelationError(notifications.error)) {
+    throw new Error(`admin notifications read failed: ${notifications.error.message}`);
+  }
 
   const sessionData = sessions.error ? [] : sessions.data || [];
   const noteData = notes.error ? [] : notes.data || [];
   const invoiceData = invoices.error ? [] : invoices.data || [];
+  const claimData = claims.error ? [] : claims.data || [];
+  const complianceData = compliance.error ? [] : compliance.data || [];
+  const incidentData = incidents.error ? [] : incidents.data || [];
+  const permissionData = permissions.error ? [] : permissions.data || [];
+  const notificationData = notifications.error ? [] : notifications.data || [];
 
   const roleCounts = (profiles.data || []).reduce(
     (acc, row) => {
@@ -550,16 +845,40 @@ async function verifyAdminFlow(adminClient) {
     .filter((row) => row.status === "paid")
     .reduce((acc, row) => acc + Number(row.amount || 0), 0);
 
+  const claimStatusCounts = claimData.reduce(
+    (acc, row) => {
+      const status = row.status || "unknown";
+      acc[status] = (acc[status] || 0) + 1;
+      return acc;
+    },
+    {},
+  );
+
+  const openComplianceCount = complianceData.filter((row) => !row.is_resolved).length;
+  const openIncidentCount = incidentData.filter(
+    (row) => row.status === "open" || row.status === "in_progress",
+  ).length;
+  const unreadNotifications = notificationData.filter((row) => row.status !== "read").length;
+
   return {
     totalProfiles: profiles.count || (profiles.data || []).length,
     totalAppointments: appointments.count || (appointments.data || []).length,
     totalConsultations: sessions.error ? 0 : sessions.count || sessionData.length,
     totalEncounterNotes: notes.error ? 0 : notes.count || noteData.length,
     totalInvoices: invoices.error ? 0 : invoices.count || invoiceData.length,
+    totalClaims: claims.error ? 0 : claims.count || claimData.length,
+    totalComplianceEvents: compliance.error ? 0 : compliance.count || complianceData.length,
+    totalIncidents: incidents.error ? 0 : incidents.count || incidentData.length,
+    totalRolePermissions: permissions.error ? 0 : permissions.count || permissionData.length,
+    totalNotifications: notifications.error ? 0 : notifications.count || notificationData.length,
     roleCounts,
     appointmentStatusCounts,
     consultationStatusCounts,
     invoiceStatusCounts,
+    claimStatusCounts,
+    openComplianceCount,
+    openIncidentCount,
+    unreadNotifications,
     paidRevenue,
   };
 }
@@ -590,6 +909,27 @@ async function main() {
     }
   }
 
+  let phaseBcdSeeded = true;
+  let phaseBcdWarning = null;
+  try {
+    await ensureOperationsArtifacts(
+      provider.client,
+      admin.client,
+      patient.user.id,
+      provider.user.id,
+      admin.user.id,
+      seedAppointments,
+    );
+  } catch (error) {
+    if (isMissingRelationError(error)) {
+      phaseBcdSeeded = false;
+      phaseBcdWarning =
+        "Phase B/C/D foundation tables are not present yet. Run supabase/migrations/0003_phase_bcd_foundations.sql and rerun seed.";
+    } else {
+      throw error;
+    }
+  }
+
   const patientCheck = await verifyPatientFlow(patient.client, patient.user.id);
   const providerCheck = await verifyProviderFlow(provider.client, provider.user.id);
   const adminCheck = await verifyAdminFlow(admin.client);
@@ -611,6 +951,10 @@ async function main() {
         phaseA: {
           seeded: phaseASeeded,
           warning: phaseAWarning,
+        },
+        phaseBcd: {
+          seeded: phaseBcdSeeded,
+          warning: phaseBcdWarning,
         },
       },
       null,

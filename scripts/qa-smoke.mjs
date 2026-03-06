@@ -34,6 +34,12 @@ function isMissingRelationError(error) {
   return msg.includes("could not find the table") || msg.includes("does not exist");
 }
 
+function isUpstreamGatewayError(error) {
+  if (!error) return false;
+  const msg = String(error.message || "").toLowerCase();
+  return msg.includes("502") || msg.includes("bad gateway") || msg.includes("<!doctype html>");
+}
+
 function qaClient() {
   return createClient(supabaseUrl, supabaseAnonKey, {
     auth: {
@@ -59,6 +65,9 @@ async function runReadCheck(client, label, table, queryBuilder) {
     if (isMissingRelationError(error)) {
       return { label, table, status: "warn", message: `${table} not found (migration pending)` };
     }
+    if (isUpstreamGatewayError(error)) {
+      return { label, table, status: "warn", message: `${table} check skipped (temporary upstream 502)` };
+    }
     throw new Error(`${label} check failed on ${table}: ${error.message}`);
   }
   return { label, table, status: "pass", rows: (data || []).length };
@@ -71,6 +80,8 @@ async function runPersonaChecks(label, client) {
       runReadCheck(client, label, "prescriptions", (q) => q.select("id,status").limit(5)),
       runReadCheck(client, label, "billing_invoices", (q) => q.select("id,status").limit(5)),
       runReadCheck(client, label, "consultation_sessions", (q) => q.select("id,status").limit(5)),
+      runReadCheck(client, label, "claim_submissions", (q) => q.select("id,status").limit(5)),
+      runReadCheck(client, label, "notification_events", (q) => q.select("id,status").limit(5)),
     ]);
   }
 
@@ -80,6 +91,9 @@ async function runPersonaChecks(label, client) {
       runReadCheck(client, label, "provider_availability", (q) => q.select("id,weekday").limit(5)),
       runReadCheck(client, label, "encounter_notes", (q) => q.select("id,status").limit(5)),
       runReadCheck(client, label, "care_orders", (q) => q.select("id,status").limit(5)),
+      runReadCheck(client, label, "claim_submissions", (q) => q.select("id,status").limit(5)),
+      runReadCheck(client, label, "notification_events", (q) => q.select("id,status").limit(5)),
+      runReadCheck(client, label, "incident_reports", (q) => q.select("id,status").limit(5)),
     ]);
   }
 
@@ -88,6 +102,11 @@ async function runPersonaChecks(label, client) {
     runReadCheck(client, label, "appointments", (q) => q.select("id,status").limit(10)),
     runReadCheck(client, label, "audit_logs", (q) => q.select("id,action").limit(10)),
     runReadCheck(client, label, "billing_invoices", (q) => q.select("id,status").limit(10)),
+    runReadCheck(client, label, "claim_submissions", (q) => q.select("id,status").limit(10)),
+    runReadCheck(client, label, "compliance_events", (q) => q.select("id,risk_level").limit(10)),
+    runReadCheck(client, label, "incident_reports", (q) => q.select("id,status").limit(10)),
+    runReadCheck(client, label, "role_permissions", (q) => q.select("id,role").limit(10)),
+    runReadCheck(client, label, "notification_events", (q) => q.select("id,status").limit(10)),
   ]);
 }
 

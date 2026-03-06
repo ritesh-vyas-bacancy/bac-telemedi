@@ -5,8 +5,8 @@
 | Phase | Status in this build | Notes |
 |---|---|---|
 | Phase A: Clinical Core | Implemented baseline | Consultation lifecycle, SOAP notes, care orders, Rx issuing, note signing |
-| Phase B: Commerce and Engagement | Foundation implemented | Billing invoice model + payment simulation UI in patient/admin flows |
-| Phase C: Admin and Compliance Hardening | Partially implemented | Expanded audit visibility and admin operational controls |
+| Phase B: Commerce and Engagement | Implemented foundation | Billing + claims + notification event engine wired in live flows |
+| Phase C: Admin and Compliance Hardening | Implemented foundation | Compliance events, incidents, and role-permission matrix live for admin |
 | Phase D: Production Readiness | In progress | Lint/build gates, smoke script, customer docs updated |
 
 ## Planning assumptions

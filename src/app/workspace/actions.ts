@@ -20,6 +20,21 @@ type ConsultationStatus = (typeof CONSULTATION_STATUS)[number];
 const CARE_ORDER_TYPES = ["lab", "imaging", "follow_up", "lifestyle", "other"] as const;
 type CareOrderType = (typeof CARE_ORDER_TYPES)[number];
 
+const CLAIM_STATUS = ["draft", "submitted", "under_review", "approved", "rejected", "paid"] as const;
+type ClaimStatus = (typeof CLAIM_STATUS)[number];
+
+const NOTIFICATION_CHANNEL = ["in_app", "email", "sms", "whatsapp"] as const;
+type NotificationChannel = (typeof NOTIFICATION_CHANNEL)[number];
+
+const COMPLIANCE_RISK = ["low", "medium", "high", "critical"] as const;
+type ComplianceRisk = (typeof COMPLIANCE_RISK)[number];
+
+const INCIDENT_SEVERITY = ["low", "medium", "high", "critical"] as const;
+type IncidentSeverity = (typeof INCIDENT_SEVERITY)[number];
+
+const INCIDENT_STATUS = ["open", "in_progress", "resolved", "closed"] as const;
+type IncidentStatus = (typeof INCIDENT_STATUS)[number];
+
 function isAppointmentStatus(value: string): value is AppointmentStatus {
   return APPOINTMENT_STATUS.includes(value as AppointmentStatus);
 }
@@ -30,6 +45,26 @@ function isConsultationStatus(value: string): value is ConsultationStatus {
 
 function isCareOrderType(value: string): value is CareOrderType {
   return CARE_ORDER_TYPES.includes(value as CareOrderType);
+}
+
+function isClaimStatus(value: string): value is ClaimStatus {
+  return CLAIM_STATUS.includes(value as ClaimStatus);
+}
+
+function isNotificationChannel(value: string): value is NotificationChannel {
+  return NOTIFICATION_CHANNEL.includes(value as NotificationChannel);
+}
+
+function isComplianceRisk(value: string): value is ComplianceRisk {
+  return COMPLIANCE_RISK.includes(value as ComplianceRisk);
+}
+
+function isIncidentSeverity(value: string): value is IncidentSeverity {
+  return INCIDENT_SEVERITY.includes(value as IncidentSeverity);
+}
+
+function isIncidentStatus(value: string): value is IncidentStatus {
+  return INCIDENT_STATUS.includes(value as IncidentStatus);
 }
 
 function safePath(path: string | null) {
@@ -47,6 +82,11 @@ function safeWeekday(value: string) {
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed < 0 || parsed > 6) return null;
   return parsed;
+}
+
+function safeText(value: FormDataEntryValue | null) {
+  const text = String(value ?? "").trim();
+  return text.length > 0 ? text : null;
 }
 
 function appointmentStatusFromConsultation(nextStatus: ConsultationStatus): AppointmentStatus {
@@ -673,4 +713,611 @@ export async function markInvoicePaidAction(formData: FormData) {
 
   revalidatePath(returnTo);
   redirect(`${returnTo}?success=${encodeURIComponent("Payment marked successful (demo mode).")}`);
+}
+
+export async function submitClaimAction(formData: FormData) {
+  const returnTo = safePath(String(formData.get("return_to") ?? "/workspace/provider/dashboard"));
+  const appointmentId = String(formData.get("appointment_id") ?? "");
+  const payerName = String(formData.get("payer_name") ?? "Self-pay").trim() || "Self-pay";
+  const amountClaimed = safeAmount(String(formData.get("amount_claimed") ?? ""));
+  const claimReference = safeText(formData.get("claim_reference"));
+
+  if (!appointmentId || amountClaimed === null) {
+    redirect(`${returnTo}?error=${encodeURIComponent("Appointment and amount are required for claim submission.")}`);
+  }
+
+  const { supabase, user, profile, appointment } = await getScopedAppointment(appointmentId, returnTo, "provider");
+
+  if (profile.role !== "provider" && profile.role !== "admin") {
+    redirect(`${returnTo}?error=${encodeURIComponent("Only provider role can submit claims.")}`);
+  }
+
+  const nowIso = new Date().toISOString();
+
+  const { data: claim, error } = await supabase
+    .from("claim_submissions")
+    .upsert(
+      {
+        appointment_id: appointment.id,
+        patient_id: appointment.patient_id,
+        provider_id: appointment.provider_id,
+        payer_name: payerName,
+        amount_claimed: amountClaimed,
+        status: "submitted",
+        claim_reference: claimReference,
+        submitted_at: nowIso,
+      },
+      { onConflict: "appointment_id" },
+    )
+    .select("id,status")
+    .single();
+
+  if (error || !claim) {
+    redirect(`${returnTo}?error=${encodeURIComponent(error?.message ?? "Unable to submit claim.")}`);
+  }
+
+  await supabase.from("notification_events").insert({
+    recipient_id: appointment.patient_id,
+    sender_id: user.id,
+    appointment_id: appointment.id,
+    title: "Claim submitted",
+    message: `Claim has been submitted for your consultation (${payerName}).`,
+    channel: "in_app",
+    status: "sent",
+    sent_at: nowIso,
+    metadata: {
+      claim_id: claim.id,
+      amount_claimed: amountClaimed,
+    },
+  });
+
+  await supabase.from("audit_logs").insert({
+    actor_id: user.id,
+    action: "claim.submitted",
+    entity_type: "claim_submissions",
+    entity_id: claim.id,
+    metadata: {
+      appointment_id: appointment.id,
+      amount_claimed: amountClaimed,
+      payer_name: payerName,
+    },
+  });
+
+  revalidatePath(returnTo);
+  redirect(`${returnTo}?success=${encodeURIComponent("Claim submitted successfully.")}`);
+}
+
+export async function updateClaimStatusAction(formData: FormData) {
+  const returnTo = safePath(String(formData.get("return_to") ?? "/workspace/admin/operations"));
+  const claimId = String(formData.get("claim_id") ?? "");
+  const nextStatus = String(formData.get("status") ?? "");
+  const reviewNotes = safeText(formData.get("review_notes"));
+
+  const { supabase, user, profile } = await requireProfile(returnTo);
+
+  if (!claimId || !isClaimStatus(nextStatus)) {
+    redirect(`${returnTo}?error=${encodeURIComponent("Invalid claim update request.")}`);
+  }
+
+  const { data: claim, error: claimError } = await supabase
+    .from("claim_submissions")
+    .select("id,appointment_id,patient_id,provider_id,status")
+    .eq("id", claimId)
+    .single();
+
+  if (claimError || !claim) {
+    redirect(`${returnTo}?error=${encodeURIComponent(claimError?.message ?? "Claim not found.")}`);
+  }
+
+  if (profile.role !== "admin" && claim.provider_id !== user.id) {
+    redirect(`${returnTo}?error=${encodeURIComponent("You cannot update this claim.")}`);
+  }
+
+  const nowIso = new Date().toISOString();
+  const updatePayload: {
+    status: ClaimStatus;
+    review_notes: string | null;
+    reviewed_at: string | null;
+    settled_at: string | null;
+  } = {
+    status: nextStatus,
+    review_notes: reviewNotes,
+    reviewed_at: null,
+    settled_at: null,
+  };
+
+  if (nextStatus === "approved" || nextStatus === "rejected" || nextStatus === "paid") {
+    updatePayload.reviewed_at = nowIso;
+  }
+  if (nextStatus === "paid") {
+    updatePayload.settled_at = nowIso;
+  }
+
+  const { error } = await supabase
+    .from("claim_submissions")
+    .update(updatePayload)
+    .eq("id", claim.id);
+
+  if (error) {
+    redirect(`${returnTo}?error=${encodeURIComponent(error.message)}`);
+  }
+
+  await supabase.from("notification_events").insert({
+    recipient_id: claim.patient_id,
+    sender_id: user.id,
+    appointment_id: claim.appointment_id,
+    title: "Claim status updated",
+    message: `Your claim is now ${nextStatus.replaceAll("_", " ")}.`,
+    channel: "in_app",
+    status: "sent",
+    sent_at: nowIso,
+    metadata: {
+      claim_id: claim.id,
+      previous_status: claim.status,
+      next_status: nextStatus,
+    },
+  });
+
+  await supabase.from("audit_logs").insert({
+    actor_id: user.id,
+    action: "claim.status_updated",
+    entity_type: "claim_submissions",
+    entity_id: claim.id,
+    metadata: {
+      previous_status: claim.status,
+      next_status: nextStatus,
+      review_notes: reviewNotes,
+    },
+  });
+
+  revalidatePath(returnTo);
+  redirect(`${returnTo}?success=${encodeURIComponent(`Claim status updated to ${nextStatus}.`)}`);
+}
+
+export async function sendNotificationAction(formData: FormData) {
+  const returnTo = safePath(String(formData.get("return_to") ?? "/workspace/provider/dashboard"));
+  const recipientId = String(formData.get("recipient_id") ?? "");
+  const appointmentId = safeText(formData.get("appointment_id"));
+  const title = String(formData.get("title") ?? "").trim();
+  const message = String(formData.get("message") ?? "").trim();
+  const channel = String(formData.get("channel") ?? "in_app");
+
+  const { supabase, user, profile } = await requireProfile(returnTo);
+
+  if ((profile.role !== "provider" && profile.role !== "admin") || !recipientId) {
+    redirect(`${returnTo}?error=${encodeURIComponent("Only provider/admin can send notifications.")}`);
+  }
+  if (!title || !message || !isNotificationChannel(channel)) {
+    redirect(`${returnTo}?error=${encodeURIComponent("Notification title, message, and channel are required.")}`);
+  }
+
+  const nowIso = new Date().toISOString();
+
+  const { data: notification, error } = await supabase
+    .from("notification_events")
+    .insert({
+      recipient_id: recipientId,
+      sender_id: user.id,
+      appointment_id: appointmentId,
+      title,
+      message,
+      channel,
+      status: "sent",
+      sent_at: nowIso,
+    })
+    .select("id")
+    .single();
+
+  if (error || !notification) {
+    redirect(`${returnTo}?error=${encodeURIComponent(error?.message ?? "Unable to send notification.")}`);
+  }
+
+  await supabase.from("audit_logs").insert({
+    actor_id: user.id,
+    action: "notification.sent",
+    entity_type: "notification_events",
+    entity_id: notification.id,
+    metadata: {
+      recipient_id: recipientId,
+      channel,
+      appointment_id: appointmentId,
+    },
+  });
+
+  revalidatePath(returnTo);
+  redirect(`${returnTo}?success=${encodeURIComponent("Notification sent successfully.")}`);
+}
+
+export async function markNotificationReadAction(formData: FormData) {
+  const returnTo = safePath(String(formData.get("return_to") ?? "/workspace/patient/inbox"));
+  const notificationId = String(formData.get("notification_id") ?? "");
+
+  if (!notificationId) {
+    redirect(`${returnTo}?error=${encodeURIComponent("Notification id is required.")}`);
+  }
+
+  const { supabase, user, profile } = await requireProfile(returnTo);
+
+  const { data: notification, error: notificationError } = await supabase
+    .from("notification_events")
+    .select("id,recipient_id,status")
+    .eq("id", notificationId)
+    .single();
+
+  if (notificationError || !notification) {
+    redirect(`${returnTo}?error=${encodeURIComponent(notificationError?.message ?? "Notification not found.")}`);
+  }
+
+  if (profile.role !== "admin" && notification.recipient_id !== user.id) {
+    redirect(`${returnTo}?error=${encodeURIComponent("You cannot update this notification.")}`);
+  }
+
+  const nowIso = new Date().toISOString();
+
+  const { error } = await supabase
+    .from("notification_events")
+    .update({
+      status: "read",
+      read_at: nowIso,
+    })
+    .eq("id", notification.id);
+
+  if (error) {
+    redirect(`${returnTo}?error=${encodeURIComponent(error.message)}`);
+  }
+
+  await supabase.from("audit_logs").insert({
+    actor_id: user.id,
+    action: "notification.read",
+    entity_type: "notification_events",
+    entity_id: notification.id,
+    metadata: {
+      previous_status: notification.status,
+      read_at: nowIso,
+    },
+  });
+
+  revalidatePath(returnTo);
+  redirect(`${returnTo}?success=${encodeURIComponent("Notification marked as read.")}`);
+}
+
+export async function createComplianceEventAction(formData: FormData) {
+  const returnTo = safePath(String(formData.get("return_to") ?? "/workspace/admin/operations"));
+  const patientId = safeText(formData.get("patient_id"));
+  const appointmentId = safeText(formData.get("appointment_id"));
+  const eventType = String(formData.get("event_type") ?? "").trim();
+  const riskLevel = String(formData.get("risk_level") ?? "medium");
+  const details = safeText(formData.get("details"));
+
+  const { supabase, user, profile } = await requireProfile(returnTo);
+
+  if (profile.role !== "provider" && profile.role !== "admin") {
+    redirect(`${returnTo}?error=${encodeURIComponent("Only provider/admin can create compliance events.")}`);
+  }
+  if (!eventType || !isComplianceRisk(riskLevel)) {
+    redirect(`${returnTo}?error=${encodeURIComponent("Event type and risk level are required.")}`);
+  }
+
+  const { data: complianceEvent, error } = await supabase
+    .from("compliance_events")
+    .insert({
+      actor_id: user.id,
+      patient_id: patientId,
+      appointment_id: appointmentId,
+      event_type: eventType,
+      risk_level: riskLevel,
+      details,
+    })
+    .select("id")
+    .single();
+
+  if (error || !complianceEvent) {
+    redirect(`${returnTo}?error=${encodeURIComponent(error?.message ?? "Unable to create compliance event.")}`);
+  }
+
+  if (patientId) {
+    await supabase.from("notification_events").insert({
+      recipient_id: patientId,
+      sender_id: user.id,
+      appointment_id: appointmentId,
+      title: "Compliance follow-up",
+      message: `A ${riskLevel} risk compliance event has been logged for your care journey.`,
+      channel: "in_app",
+      status: "sent",
+      sent_at: new Date().toISOString(),
+      metadata: {
+        compliance_event_id: complianceEvent.id,
+      },
+    });
+  }
+
+  await supabase.from("audit_logs").insert({
+    actor_id: user.id,
+    action: "compliance.event_created",
+    entity_type: "compliance_events",
+    entity_id: complianceEvent.id,
+    metadata: {
+      event_type: eventType,
+      risk_level: riskLevel,
+      appointment_id: appointmentId,
+      patient_id: patientId,
+    },
+  });
+
+  revalidatePath(returnTo);
+  redirect(`${returnTo}?success=${encodeURIComponent("Compliance event created.")}`);
+}
+
+export async function resolveComplianceEventAction(formData: FormData) {
+  const returnTo = safePath(String(formData.get("return_to") ?? "/workspace/admin/operations"));
+  const complianceEventId = String(formData.get("compliance_event_id") ?? "");
+  const resolutionNotes = safeText(formData.get("resolution_notes"));
+
+  if (!complianceEventId) {
+    redirect(`${returnTo}?error=${encodeURIComponent("Compliance event id is required.")}`);
+  }
+
+  const { supabase, user, profile } = await requireProfile(returnTo);
+
+  if (profile.role !== "admin") {
+    redirect(`${returnTo}?error=${encodeURIComponent("Only admin can resolve compliance events.")}`);
+  }
+
+  const { data: complianceEvent, error: eventError } = await supabase
+    .from("compliance_events")
+    .select("id,patient_id,event_type,details,is_resolved")
+    .eq("id", complianceEventId)
+    .single();
+
+  if (eventError || !complianceEvent) {
+    redirect(`${returnTo}?error=${encodeURIComponent(eventError?.message ?? "Compliance event not found.")}`);
+  }
+
+  const nowIso = new Date().toISOString();
+  const mergedDetails = resolutionNotes
+    ? [complianceEvent.details, `Resolution: ${resolutionNotes}`].filter(Boolean).join("\n\n")
+    : complianceEvent.details;
+
+  const { error } = await supabase
+    .from("compliance_events")
+    .update({
+      is_resolved: true,
+      resolved_by: user.id,
+      resolved_at: nowIso,
+      details: mergedDetails,
+    })
+    .eq("id", complianceEvent.id);
+
+  if (error) {
+    redirect(`${returnTo}?error=${encodeURIComponent(error.message)}`);
+  }
+
+  if (complianceEvent.patient_id) {
+    await supabase.from("notification_events").insert({
+      recipient_id: complianceEvent.patient_id,
+      sender_id: user.id,
+      title: "Compliance event resolved",
+      message: `Compliance event "${complianceEvent.event_type}" has been resolved.`,
+      channel: "in_app",
+      status: "sent",
+      sent_at: nowIso,
+      metadata: {
+        compliance_event_id: complianceEvent.id,
+      },
+    });
+  }
+
+  await supabase.from("audit_logs").insert({
+    actor_id: user.id,
+    action: "compliance.event_resolved",
+    entity_type: "compliance_events",
+    entity_id: complianceEvent.id,
+    metadata: {
+      resolved_at: nowIso,
+      previously_resolved: complianceEvent.is_resolved,
+      resolution_notes: resolutionNotes,
+    },
+  });
+
+  revalidatePath(returnTo);
+  redirect(`${returnTo}?success=${encodeURIComponent("Compliance event resolved.")}`);
+}
+
+export async function createIncidentReportAction(formData: FormData) {
+  const returnTo = safePath(String(formData.get("return_to") ?? "/workspace/admin/operations"));
+  const title = String(formData.get("title") ?? "").trim();
+  const description = String(formData.get("description") ?? "").trim();
+  const severity = String(formData.get("severity") ?? "medium");
+  const appointmentId = safeText(formData.get("appointment_id"));
+  const assignedTo = safeText(formData.get("assigned_to"));
+
+  const { supabase, user, profile } = await requireProfile(returnTo);
+
+  if (profile.role !== "provider" && profile.role !== "admin") {
+    redirect(`${returnTo}?error=${encodeURIComponent("Only provider/admin can report incidents.")}`);
+  }
+  if (!title || !description || !isIncidentSeverity(severity)) {
+    redirect(`${returnTo}?error=${encodeURIComponent("Incident title, description, and severity are required.")}`);
+  }
+
+  const nowIso = new Date().toISOString();
+
+  const { data: incident, error } = await supabase
+    .from("incident_reports")
+    .insert({
+      title,
+      description,
+      severity,
+      status: "open",
+      opened_by: user.id,
+      assigned_to: assignedTo,
+      appointment_id: appointmentId,
+      opened_at: nowIso,
+    })
+    .select("id")
+    .single();
+
+  if (error || !incident) {
+    redirect(`${returnTo}?error=${encodeURIComponent(error?.message ?? "Unable to create incident report.")}`);
+  }
+
+  if (assignedTo && assignedTo !== user.id) {
+    await supabase.from("notification_events").insert({
+      recipient_id: assignedTo,
+      sender_id: user.id,
+      appointment_id: appointmentId,
+      title: "Incident assigned",
+      message: `You have been assigned incident "${title}".`,
+      channel: "in_app",
+      status: "sent",
+      sent_at: nowIso,
+      metadata: {
+        incident_id: incident.id,
+      },
+    });
+  }
+
+  await supabase.from("audit_logs").insert({
+    actor_id: user.id,
+    action: "incident.created",
+    entity_type: "incident_reports",
+    entity_id: incident.id,
+    metadata: {
+      severity,
+      appointment_id: appointmentId,
+      assigned_to: assignedTo,
+    },
+  });
+
+  revalidatePath(returnTo);
+  redirect(`${returnTo}?success=${encodeURIComponent("Incident report created.")}`);
+}
+
+export async function updateIncidentReportAction(formData: FormData) {
+  const returnTo = safePath(String(formData.get("return_to") ?? "/workspace/admin/operations"));
+  const incidentId = String(formData.get("incident_id") ?? "");
+  const nextStatus = String(formData.get("status") ?? "");
+  const assignedTo = safeText(formData.get("assigned_to"));
+  const resolutionNotes = safeText(formData.get("resolution_notes"));
+
+  const { supabase, user, profile } = await requireProfile(returnTo);
+
+  if (!incidentId || !isIncidentStatus(nextStatus)) {
+    redirect(`${returnTo}?error=${encodeURIComponent("Invalid incident update request.")}`);
+  }
+
+  const { data: incident, error: incidentError } = await supabase
+    .from("incident_reports")
+    .select("id,title,opened_by,assigned_to,status,resolution_notes,resolved_at")
+    .eq("id", incidentId)
+    .single();
+
+  if (incidentError || !incident) {
+    redirect(`${returnTo}?error=${encodeURIComponent(incidentError?.message ?? "Incident not found.")}`);
+  }
+
+  if (
+    profile.role !== "admin" &&
+    incident.opened_by !== user.id &&
+    incident.assigned_to !== user.id
+  ) {
+    redirect(`${returnTo}?error=${encodeURIComponent("You cannot update this incident.")}`);
+  }
+
+  const nowIso = new Date().toISOString();
+  const shouldSetResolvedAt = nextStatus === "resolved" || nextStatus === "closed";
+  const nextResolutionNotes = resolutionNotes ?? incident.resolution_notes;
+
+  const { error } = await supabase
+    .from("incident_reports")
+    .update({
+      status: nextStatus,
+      assigned_to: assignedTo,
+      resolution_notes: nextResolutionNotes,
+      resolved_at: shouldSetResolvedAt ? nowIso : null,
+    })
+    .eq("id", incident.id);
+
+  if (error) {
+    redirect(`${returnTo}?error=${encodeURIComponent(error.message)}`);
+  }
+
+  if (incident.opened_by && incident.opened_by !== user.id) {
+    await supabase.from("notification_events").insert({
+      recipient_id: incident.opened_by,
+      sender_id: user.id,
+      title: "Incident updated",
+      message: `Incident "${incident.title}" moved to ${nextStatus.replaceAll("_", " ")}.`,
+      channel: "in_app",
+      status: "sent",
+      sent_at: nowIso,
+      metadata: {
+        incident_id: incident.id,
+        previous_status: incident.status,
+        next_status: nextStatus,
+      },
+    });
+  }
+
+  await supabase.from("audit_logs").insert({
+    actor_id: user.id,
+    action: "incident.updated",
+    entity_type: "incident_reports",
+    entity_id: incident.id,
+    metadata: {
+      previous_status: incident.status,
+      next_status: nextStatus,
+      assigned_to: assignedTo,
+      resolution_notes: resolutionNotes,
+    },
+  });
+
+  revalidatePath(returnTo);
+  redirect(`${returnTo}?success=${encodeURIComponent(`Incident updated to ${nextStatus}.`)}`);
+}
+
+export async function upsertRolePermissionAction(formData: FormData) {
+  const returnTo = safePath(String(formData.get("return_to") ?? "/workspace/admin/operations"));
+  const role = String(formData.get("role") ?? "");
+  const permissionKey = String(formData.get("permission_key") ?? "").trim();
+  const description = safeText(formData.get("description"));
+
+  const { supabase, user, profile } = await requireProfile(returnTo);
+
+  if (profile.role !== "admin") {
+    redirect(`${returnTo}?error=${encodeURIComponent("Only admin can manage role permissions.")}`);
+  }
+
+  if (!["patient", "provider", "admin"].includes(role) || !permissionKey) {
+    redirect(`${returnTo}?error=${encodeURIComponent("Role and permission key are required.")}`);
+  }
+
+  const { error } = await supabase
+    .from("role_permissions")
+    .upsert(
+      {
+        role,
+        permission_key: permissionKey,
+        description,
+      },
+      { onConflict: "role,permission_key" },
+    );
+
+  if (error) {
+    redirect(`${returnTo}?error=${encodeURIComponent(error.message)}`);
+  }
+
+  await supabase.from("audit_logs").insert({
+    actor_id: user.id,
+    action: "permissions.upserted",
+    entity_type: "role_permissions",
+    metadata: {
+      role,
+      permission_key: permissionKey,
+      description,
+    },
+  });
+
+  revalidatePath(returnTo);
+  redirect(`${returnTo}?success=${encodeURIComponent("Role permission updated.")}`);
 }
