@@ -1,4 +1,25 @@
 import { createClient } from "@supabase/supabase-js";
+import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
+function loadLocalEnvFile() {
+  const envPath = resolve(process.cwd(), ".env.local");
+  if (!existsSync(envPath)) return;
+
+  const content = readFileSync(envPath, "utf8");
+  for (const line of content.split(/\r?\n/)) {
+    if (!line || line.trim().startsWith("#")) continue;
+    const index = line.indexOf("=");
+    if (index <= 0) continue;
+    const key = line.slice(0, index).trim();
+    const value = line.slice(index + 1).trim();
+    if (!process.env[key]) {
+      process.env[key] = value;
+    }
+  }
+}
+
+loadLocalEnvFile();
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -32,6 +53,12 @@ function isAlreadyRegisteredError(error) {
   if (!error) return false;
   const msg = String(error.message || "").toLowerCase();
   return msg.includes("already registered") || msg.includes("already been registered");
+}
+
+function isMissingRelationError(error) {
+  if (!error) return false;
+  const msg = String(error.message || "").toLowerCase();
+  return msg.includes("could not find the table") || msg.includes("does not exist");
 }
 
 async function getAuthedClient({ email, role, fullName, password }) {
@@ -188,52 +215,278 @@ async function updateProviderQueueStates(providerClient, providerId, seedAppoint
   }
 }
 
-async function verifyPatientFlow(patientClient, patientId) {
-  const providers = await patientClient.from("profiles").select("id,full_name,role").eq("role", "provider").limit(10);
-  if (providers.error) {
-    throw new Error(`patient providers read failed: ${providers.error.message}`);
-  }
-
-  const appointments = await patientClient
+async function readSeedAppointments(patientClient, patientId, providerId) {
+  const seedRows = await patientClient
     .from("appointments")
-    .select("id,status,scheduled_at,reason,provider_id")
+    .select("id,status,reason,scheduled_at,patient_id,provider_id")
     .eq("patient_id", patientId)
+    .eq("provider_id", providerId)
+    .ilike("reason", "MVP Seed%")
     .order("scheduled_at", { ascending: true })
-    .limit(20);
+    .limit(10);
 
-  if (appointments.error) {
-    throw new Error(`patient appointments read failed: ${appointments.error.message}`);
+  if (seedRows.error) {
+    throw new Error(`seed appointments read failed: ${seedRows.error.message}`);
   }
+
+  return seedRows.data || [];
+}
+
+async function ensureClinicalArtifacts(providerClient, patientId, providerId, appointments) {
+  for (const appointment of appointments) {
+    let consultationStatus = "scheduled";
+    if (appointment.status === "in_progress") consultationStatus = "in_consult";
+    if (appointment.status === "completed") consultationStatus = "completed";
+    if (appointment.status === "cancelled" || appointment.status === "no_show") consultationStatus = "cancelled";
+
+    const nowIso = new Date().toISOString();
+
+    const sessionUpsert = await providerClient.from("consultation_sessions").upsert(
+      {
+        appointment_id: appointment.id,
+        patient_id: patientId,
+        provider_id: providerId,
+        status: consultationStatus,
+        patient_ready_at: consultationStatus === "scheduled" ? null : nowIso,
+        provider_ready_at: consultationStatus === "in_consult" || consultationStatus === "completed" ? nowIso : null,
+        started_at: consultationStatus === "in_consult" || consultationStatus === "completed" ? nowIso : null,
+        ended_at: consultationStatus === "completed" ? nowIso : null,
+      },
+      { onConflict: "appointment_id" },
+    );
+
+    if (sessionUpsert.error) {
+      throw new Error(`consultation_sessions upsert failed: ${sessionUpsert.error.message}`);
+    }
+  }
+
+  const completedAppointment = appointments.find((item) => item.status === "completed") || appointments[0];
+  if (completedAppointment) {
+    const noteUpsert = await providerClient.from("encounter_notes").upsert(
+      {
+        appointment_id: completedAppointment.id,
+        patient_id: patientId,
+        provider_id: providerId,
+        subjective: "Patient reports recurring headache for 3 days.",
+        objective: "Vitals stable. No neurological deficit.",
+        assessment: "Tension headache, mild dehydration.",
+        plan: "Hydration, rest, analgesic PRN, follow-up in 3 days.",
+        status: completedAppointment.status === "completed" ? "signed" : "draft",
+      },
+      { onConflict: "appointment_id" },
+    );
+
+    if (noteUpsert.error) {
+      throw new Error(`encounter_notes upsert failed: ${noteUpsert.error.message}`);
+    }
+
+    const existingRx = await providerClient
+      .from("prescriptions")
+      .select("id")
+      .eq("appointment_id", completedAppointment.id)
+      .limit(1);
+
+    if (existingRx.error) {
+      throw new Error(`prescriptions read failed: ${existingRx.error.message}`);
+    }
+
+    if ((existingRx.data || []).length === 0) {
+      const rxInsert = await providerClient.from("prescriptions").insert({
+        appointment_id: completedAppointment.id,
+        patient_id: patientId,
+        provider_id: providerId,
+        medication_name: "Paracetamol 650mg",
+        dosage: "1 tablet twice daily for 3 days",
+        instructions: "Take after food. Maintain hydration.",
+        status: "sent",
+      });
+
+      if (rxInsert.error) {
+        throw new Error(`prescriptions insert failed: ${rxInsert.error.message}`);
+      }
+    }
+
+    const existingOrder = await providerClient
+      .from("care_orders")
+      .select("id")
+      .eq("appointment_id", completedAppointment.id)
+      .limit(1);
+
+    if (existingOrder.error) {
+      throw new Error(`care_orders read failed: ${existingOrder.error.message}`);
+    }
+
+    if ((existingOrder.data || []).length === 0) {
+      const orderInsert = await providerClient.from("care_orders").insert({
+        appointment_id: completedAppointment.id,
+        patient_id: patientId,
+        provider_id: providerId,
+        order_type: "follow_up",
+        title: "Follow-up consultation",
+        details: "Reassess headache trend and hydration status.",
+        due_date: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+        status: "open",
+      });
+
+      if (orderInsert.error) {
+        throw new Error(`care_orders insert failed: ${orderInsert.error.message}`);
+      }
+    }
+  }
+
+  for (const appointment of appointments) {
+    const existingInvoice = await providerClient
+      .from("billing_invoices")
+      .select("id,status")
+      .eq("appointment_id", appointment.id)
+      .limit(1);
+
+    if (existingInvoice.error) {
+      throw new Error(`billing_invoices read failed: ${existingInvoice.error.message}`);
+    }
+
+    const invoiceStatus = appointment.status === "completed" ? "paid" : "pending";
+    const paidAt = invoiceStatus === "paid" ? new Date().toISOString() : null;
+
+    if ((existingInvoice.data || []).length === 0) {
+      const invoiceInsert = await providerClient.from("billing_invoices").insert({
+        appointment_id: appointment.id,
+        patient_id: patientId,
+        provider_id: providerId,
+        amount: 499,
+        currency: "INR",
+        status: invoiceStatus,
+        paid_at: paidAt,
+        gateway_reference: invoiceStatus === "paid" ? "SEED_PAYMENT" : null,
+      });
+
+      if (invoiceInsert.error) {
+        throw new Error(`billing_invoices insert failed: ${invoiceInsert.error.message}`);
+      }
+    } else {
+      const invoiceUpdate = await providerClient
+        .from("billing_invoices")
+        .update({
+          status: invoiceStatus,
+          paid_at: paidAt,
+          gateway_reference: invoiceStatus === "paid" ? "SEED_PAYMENT" : null,
+        })
+        .eq("id", existingInvoice.data[0].id);
+
+      if (invoiceUpdate.error) {
+        throw new Error(`billing_invoices update failed: ${invoiceUpdate.error.message}`);
+      }
+    }
+  }
+}
+
+async function verifyPatientFlow(patientClient, patientId) {
+  const [providers, appointments, sessions, invoices] = await Promise.all([
+    patientClient.from("profiles").select("id,full_name,role").eq("role", "provider").limit(10),
+    patientClient
+      .from("appointments")
+      .select("id,status,scheduled_at,reason,provider_id")
+      .eq("patient_id", patientId)
+      .order("scheduled_at", { ascending: true })
+      .limit(20),
+    patientClient
+      .from("consultation_sessions")
+      .select("id,appointment_id,status")
+      .eq("patient_id", patientId)
+      .order("updated_at", { ascending: false })
+      .limit(20),
+    patientClient
+      .from("billing_invoices")
+      .select("id,appointment_id,status,amount,currency")
+      .eq("patient_id", patientId)
+      .order("created_at", { ascending: false })
+      .limit(20),
+  ]);
+
+  if (providers.error) throw new Error(`patient providers read failed: ${providers.error.message}`);
+  if (appointments.error) throw new Error(`patient appointments read failed: ${appointments.error.message}`);
+  if (sessions.error && !isMissingRelationError(sessions.error)) {
+    throw new Error(`patient sessions read failed: ${sessions.error.message}`);
+  }
+  if (invoices.error && !isMissingRelationError(invoices.error)) {
+    throw new Error(`patient invoices read failed: ${invoices.error.message}`);
+  }
+
+  const sessionData = sessions.error ? [] : sessions.data || [];
+  const invoiceData = invoices.error ? [] : invoices.data || [];
 
   return {
     providerCount: (providers.data || []).length,
     appointmentCount: (appointments.data || []).length,
+    consultationCount: sessionData.length,
+    invoiceCount: invoiceData.length,
     sampleAppointments: (appointments.data || []).slice(0, 5),
+    sampleConsultations: sessionData.slice(0, 5),
+    sampleInvoices: invoiceData.slice(0, 3),
   };
 }
 
 async function verifyProviderFlow(providerClient, providerId) {
-  const queue = await providerClient
-    .from("appointments")
-    .select("id,status,scheduled_at,reason,patient_id")
-    .eq("provider_id", providerId)
-    .order("scheduled_at", { ascending: true })
-    .limit(20);
+  const [queue, sessions, notes, careOrders] = await Promise.all([
+    providerClient
+      .from("appointments")
+      .select("id,status,scheduled_at,reason,patient_id")
+      .eq("provider_id", providerId)
+      .order("scheduled_at", { ascending: true })
+      .limit(20),
+    providerClient
+      .from("consultation_sessions")
+      .select("id,appointment_id,status")
+      .eq("provider_id", providerId)
+      .order("updated_at", { ascending: false })
+      .limit(20),
+    providerClient
+      .from("encounter_notes")
+      .select("id,appointment_id,status")
+      .eq("provider_id", providerId)
+      .order("updated_at", { ascending: false })
+      .limit(20),
+    providerClient
+      .from("care_orders")
+      .select("id,appointment_id,status,order_type")
+      .eq("provider_id", providerId)
+      .order("created_at", { ascending: false })
+      .limit(20),
+  ]);
 
-  if (queue.error) {
-    throw new Error(`provider queue read failed: ${queue.error.message}`);
+  if (queue.error) throw new Error(`provider queue read failed: ${queue.error.message}`);
+  if (sessions.error && !isMissingRelationError(sessions.error)) {
+    throw new Error(`provider sessions read failed: ${sessions.error.message}`);
   }
+  if (notes.error && !isMissingRelationError(notes.error)) {
+    throw new Error(`provider notes read failed: ${notes.error.message}`);
+  }
+  if (careOrders.error && !isMissingRelationError(careOrders.error)) {
+    throw new Error(`provider care orders read failed: ${careOrders.error.message}`);
+  }
+
+  const sessionData = sessions.error ? [] : sessions.data || [];
+  const noteData = notes.error ? [] : notes.data || [];
+  const careOrderData = careOrders.error ? [] : careOrders.data || [];
 
   return {
     queueCount: (queue.data || []).length,
+    consultationCount: sessionData.length,
+    noteCount: noteData.length,
+    careOrderCount: careOrderData.length,
     sampleQueue: (queue.data || []).slice(0, 5),
+    sampleConsultations: sessionData.slice(0, 5),
+    sampleNotes: noteData.slice(0, 3),
   };
 }
 
 async function verifyAdminFlow(adminClient) {
-  const [profiles, appointments] = await Promise.all([
+  const [profiles, appointments, sessions, notes, invoices] = await Promise.all([
     adminClient.from("profiles").select("id,role", { count: "exact" }),
     adminClient.from("appointments").select("id,status", { count: "exact" }),
+    adminClient.from("consultation_sessions").select("id,status", { count: "exact" }),
+    adminClient.from("encounter_notes").select("id,status", { count: "exact" }),
+    adminClient.from("billing_invoices").select("id,status,amount", { count: "exact" }),
   ]);
 
   if (profiles.error) {
@@ -242,6 +495,19 @@ async function verifyAdminFlow(adminClient) {
   if (appointments.error) {
     throw new Error(`admin appointments read failed: ${appointments.error.message}`);
   }
+  if (sessions.error && !isMissingRelationError(sessions.error)) {
+    throw new Error(`admin sessions read failed: ${sessions.error.message}`);
+  }
+  if (notes.error && !isMissingRelationError(notes.error)) {
+    throw new Error(`admin notes read failed: ${notes.error.message}`);
+  }
+  if (invoices.error && !isMissingRelationError(invoices.error)) {
+    throw new Error(`admin invoices read failed: ${invoices.error.message}`);
+  }
+
+  const sessionData = sessions.error ? [] : sessions.data || [];
+  const noteData = notes.error ? [] : notes.data || [];
+  const invoiceData = invoices.error ? [] : invoices.data || [];
 
   const roleCounts = (profiles.data || []).reduce(
     (acc, row) => {
@@ -262,11 +528,39 @@ async function verifyAdminFlow(adminClient) {
     {},
   );
 
+  const consultationStatusCounts = sessionData.reduce(
+    (acc, row) => {
+      const status = row.status || "unknown";
+      acc[status] = (acc[status] || 0) + 1;
+      return acc;
+    },
+    {},
+  );
+
+  const invoiceStatusCounts = invoiceData.reduce(
+    (acc, row) => {
+      const status = row.status || "unknown";
+      acc[status] = (acc[status] || 0) + 1;
+      return acc;
+    },
+    {},
+  );
+
+  const paidRevenue = invoiceData
+    .filter((row) => row.status === "paid")
+    .reduce((acc, row) => acc + Number(row.amount || 0), 0);
+
   return {
     totalProfiles: profiles.count || (profiles.data || []).length,
     totalAppointments: appointments.count || (appointments.data || []).length,
+    totalConsultations: sessions.error ? 0 : sessions.count || sessionData.length,
+    totalEncounterNotes: notes.error ? 0 : notes.count || noteData.length,
+    totalInvoices: invoices.error ? 0 : invoices.count || invoiceData.length,
     roleCounts,
     appointmentStatusCounts,
+    consultationStatusCounts,
+    invoiceStatusCounts,
+    paidRevenue,
   };
 }
 
@@ -279,8 +573,22 @@ async function main() {
 
   await ensureProviderAvailability(provider.client, provider.user.id);
 
-  const seedAppointments = await ensureSeedAppointments(patient.client, patient.user.id, provider.user.id);
-  await updateProviderQueueStates(provider.client, provider.user.id, seedAppointments);
+  const initialSeedAppointments = await ensureSeedAppointments(patient.client, patient.user.id, provider.user.id);
+  await updateProviderQueueStates(provider.client, provider.user.id, initialSeedAppointments);
+  const seedAppointments = await readSeedAppointments(patient.client, patient.user.id, provider.user.id);
+  let phaseASeeded = true;
+  let phaseAWarning = null;
+  try {
+    await ensureClinicalArtifacts(provider.client, patient.user.id, provider.user.id, seedAppointments);
+  } catch (error) {
+    if (isMissingRelationError(error)) {
+      phaseASeeded = false;
+      phaseAWarning =
+        "Phase A tables are not present yet. Run supabase/migrations/0002_phase_a_clinical_core.sql and rerun seed.";
+    } else {
+      throw error;
+    }
+  }
 
   const patientCheck = await verifyPatientFlow(patient.client, patient.user.id);
   const providerCheck = await verifyProviderFlow(provider.client, provider.user.id);
@@ -299,6 +607,10 @@ async function main() {
           patient: patientCheck,
           provider: providerCheck,
           admin: adminCheck,
+        },
+        phaseA: {
+          seeded: phaseASeeded,
+          warning: phaseAWarning,
         },
       },
       null,

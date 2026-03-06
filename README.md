@@ -41,6 +41,7 @@ Open `http://localhost:3000`.
 Use Supabase SQL Editor and run:
 
 `supabase/migrations/0001_mvp_schema.sql`
+`supabase/migrations/0002_phase_a_clinical_core.sql`
 
 ## Supabase Helpers
 
@@ -55,8 +56,17 @@ Use Supabase SQL Editor and run:
 - Role-aware workspaces: patient, provider, admin
 - Route protection by auth + role
 - Patient booking flow backed by live `appointments` data
-- Provider queue dashboard with status updates (`in_progress`, `completed`, `cancelled`)
-- Admin pulse dashboard with live system counts
+- Provider queue dashboard with consultation lifecycle controls
+- Provider clinical workbench: SOAP notes, prescriptions, care orders
+- Patient visits center: check-in, billing simulation, care updates
+- Admin pulse dashboard with appointment + consultation + billing metrics
+
+## Seed and QA Helpers
+
+- Seed demo users/data:
+  - `node scripts/seed-mvp-data.mjs`
+- Optional authenticated smoke QA:
+  - `npm run qa:smoke`
 
 ## Customer Documents
 

@@ -27,7 +27,7 @@ export const WORKSPACE_CONFIG: Record<Persona, PersonaDefinition> = {
       {
         slug: "visits",
         title: "My Visits",
-        description: "Track all appointments and status progression.",
+        description: "Track appointments, check-in, invoices, and clinical updates.",
       },
       {
         slug: "inbox",
@@ -44,7 +44,7 @@ export const WORKSPACE_CONFIG: Record<Persona, PersonaDefinition> = {
       {
         slug: "dashboard",
         title: "Queue Dashboard",
-        description: "Manage today's patient queue with live status updates.",
+        description: "Manage queue, consultation state machine, and readiness flow.",
       },
       {
         slug: "schedule",
@@ -54,7 +54,7 @@ export const WORKSPACE_CONFIG: Record<Persona, PersonaDefinition> = {
       {
         slug: "patients",
         title: "Patient Panel",
-        description: "View active patient list and recent interactions.",
+        description: "Complete SOAP notes, prescriptions, and care orders.",
       },
     ],
   },
@@ -66,7 +66,7 @@ export const WORKSPACE_CONFIG: Record<Persona, PersonaDefinition> = {
       {
         slug: "pulse",
         title: "Operations Pulse",
-        description: "See live telemedicine platform health.",
+        description: "See platform health, consultation throughput, and billing pulse.",
       },
       {
         slug: "operations",

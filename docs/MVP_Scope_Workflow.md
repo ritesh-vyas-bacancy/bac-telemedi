@@ -1,30 +1,25 @@
-# Telemedicine MVP Scope and Workflow (Customer Share)
+# Telemedicine MVP v2 Scope and Workflow (Customer Share)
 
-## 1) MVP objective
+## 1) Product objective
 
-Deliver a functional telemedicine MVP that proves core platform viability across three roles:
+Deliver a demo-ready telemedicine platform that validates real operational value across three personas:
 - Patient
 - Provider
 - Admin
 
-This MVP demonstrates secure access, role-based workflows, and live appointment operations.
+This version includes secure auth, role-based workflows, appointment operations, consultation lifecycle, and core clinical documentation.
 
-## 2) Business model (MVP-level)
+## 2) Business model (current build)
 
 ### Core value
 - Faster patient access to virtual consultation
-- Efficient provider queue management
-- Real-time operations visibility for admin team
+- Structured provider consultation execution
+- Admin-level real-time operational and billing visibility
 
-### Commercial model direction
-- Consultation-based revenue (per appointment)
-- Provider-side service enablement (workflow tooling)
-- Operational reporting foundation for scaling
-
-### MVP business outcomes validated
-- A patient can discover provider availability context and book appointments.
-- A provider can manage queue and update encounter state.
-- An admin can monitor top-level system pulse.
+### Revenue direction
+- Consultation fee per appointment (billing simulation in this build)
+- Provider enablement through clinical workflow tooling
+- Operations dashboard for scale and governance
 
 ## 3) Tech stack
 
@@ -33,69 +28,70 @@ This MVP demonstrates secure access, role-based workflows, and live appointment 
   - React 19
   - TypeScript
   - Tailwind CSS 4
-- Backend and data:
+- Backend/data:
   - Supabase Auth
   - Supabase Postgres
-  - Row Level Security (RLS)
   - SQL migration-driven schema
-- Security model:
-  - Role-based route protection
-  - Row-level policies by user role and ownership
+  - RLS policies for all domain tables
+- Security:
+  - Role-aware route checks
+  - Row ownership enforcement
+  - Audit logging
 
-## 4) MVP modules covered
+## 4) Modules covered
 
-| User | Module | Coverage in MVP | Notes |
+| Persona | Module | Coverage | Status |
 |---|---|---|---|
-| Shared | Authentication (Sign up / Sign in / Sign out) | Live | Supabase Auth integration with role metadata |
-| Shared | Role-based route protection | Live | Patient/provider/admin path guarding |
-| Patient | Booking and checkout foundation | Live | Select provider, choose schedule, book appointment |
-| Patient | Appointment visibility | Live | Upcoming appointments list shown |
-| Provider | Daily queue dashboard | Live | Queue read from appointments table |
-| Provider | Queue status update | Live | Update to in-progress/completed/cancelled |
-| Admin | Marketplace pulse dashboard | Live | Aggregate counts and status distribution |
-| Shared | Multi-screen journey visualization | Prototype | Full UX journey available under `/prototype` |
+| Shared | Auth and role routing | Sign up/sign in/sign out, route protection | Live |
+| Patient | Booking | Provider selection, schedule, reason, invoice seed | Live |
+| Patient | Visits | Appointment timeline, check-in, invoice pay simulation, care updates | Live |
+| Provider | Dashboard | Queue + consultation state transitions + readiness view | Live |
+| Provider | Patient Panel | SOAP notes, note signing, prescription issue, care orders | Live |
+| Provider | Availability | Weekly consultation slot management | Live |
+| Admin | Pulse | Appointment + consultation + billing KPI snapshot | Live |
+| Admin | Operations | Appointment controls, consultation controls, billing overview | Live |
+| Admin | Audit | Action stream and metadata trail | Live |
+| Shared | High-fidelity journey prototype | Full visual walkthrough | Live (`/prototype`) |
 
-## 5) Module workflows (flow-level)
+## 5) Workflow summary
 
-## 5.1 Authentication and role onboarding
+### 5.1 Authentication and onboarding
 
-1. User signs up with email, password, name, role.
-2. Auth user is created in Supabase.
-3. Profile is created/synced in `public.profiles`.
-4. Route access is controlled by role:
-   - `/workspace/patient/*`
-   - `/workspace/provider/*`
-   - `/workspace/admin/*`
+1. User signs up with role metadata.
+2. Auth profile is synced into `public.profiles`.
+3. Role-specific workspaces are enforced by route + RLS.
 
-## 5.2 Patient booking workflow
+### 5.2 Booking and billing initialization
 
-1. Patient enters booking screen.
-2. Providers are loaded from `profiles` where role=`provider`.
-3. Patient submits provider + schedule + reason.
-4. New row inserted into `appointments` with status=`booked`.
-5. Audit log entry is created.
-6. Appointment appears in patient’s upcoming list.
+1. Patient books appointment with provider and schedule.
+2. Appointment row is created as `booked`.
+3. Consultation shell is initialized (`consultation_sessions`).
+4. Billing invoice is generated as `pending`.
+5. Audit log records booking action.
 
-## 5.3 Provider queue workflow
+### 5.3 Consultation lifecycle
 
-1. Provider opens dashboard.
-2. Queue loads all appointments assigned to that provider.
-3. Provider updates status through quick actions.
-4. Update is persisted and logged in audit table.
+1. Patient checks in from visit center.
+2. Provider sets consultation state (`ready`, `in_consult`, `completed`).
+3. Appointment state synchronizes with consultation progression.
+4. Admin can monitor/override in operations desk.
 
-## 5.4 Admin pulse workflow
+### 5.4 Clinical documentation
 
-1. Admin opens pulse module.
-2. System computes:
-   - active sessions
-   - total provider count
-   - total patient count
-   - appointment status distribution
-3. Admin gets live operational snapshot for decision support.
+1. Provider saves SOAP note draft (`encounter_notes`).
+2. Provider issues prescription (`prescriptions`).
+3. Provider adds care orders (`care_orders`).
+4. Provider signs note to finalize encounter.
 
-## 6) Data model covered in MVP
+### 5.5 Admin control and oversight
 
-Core tables:
+1. Pulse dashboard aggregates utilization and financial signals.
+2. Operations desk exposes per-appointment controls.
+3. Audit stream captures workflow trail for traceability.
+
+## 6) Data model delivered
+
+Base schema:
 - `profiles`
 - `provider_availability`
 - `appointments`
@@ -103,30 +99,34 @@ Core tables:
 - `prescriptions`
 - `audit_logs`
 
-Schema and policies:
+Clinical-core extensions:
+- `consultation_sessions`
+- `encounter_notes`
+- `care_orders`
+- `billing_invoices`
+
+Migration files:
 - `supabase/migrations/0001_mvp_schema.sql`
+- `supabase/migrations/0002_phase_a_clinical_core.sql`
 
 ## 7) Security and compliance baseline
 
-- Role-aware route checks in app layer
-- RLS policies in database layer
-- Audit trail for key appointment actions
-- Auth-linked profile ownership model
+- Role-aware app routing
+- RLS per table with patient/provider/admin scoping
+- Ownership checks on write actions
+- Audit logs for major state transitions
 
-## 8) Out of scope in this MVP
+## 8) Current out-of-scope
 
-- Live video/WebRTC consultation engine
-- Full SOAP notes and clinical documentation suite
-- Payment gateway and settlement flows
-- Insurance/claims processing
-- Advanced notifications and campaign system
-- Production-grade observability and scaling automation
+- Real-time media (WebRTC/video transport)
+- Payment gateway settlement integrations (current billing is demo simulation)
+- Insurance claims lifecycle
+- Notification campaign engine
+- Production SRE stack (full observability, on-call automation, DR drills)
 
-## 9) Demo summary for customer
+## 9) Demo value summary
 
-This MVP is production-style in architecture but scoped for validation:
-- Core user journeys are operational and testable.
-- Security foundation is in place.
-- Data model is extensible for next phases.
-- Remaining features are planned in phased delivery.
-
+This build is suitable for business demo and customer walkthrough:
+- Complete role journeys are functional
+- Clinical flow is no longer superficial (notes + Rx + orders + lifecycle)
+- Data and security foundation are extensible for full production roadmap

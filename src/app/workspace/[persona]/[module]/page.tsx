@@ -4,6 +4,13 @@ import { notFound, redirect } from "next/navigation";
 import {
   addAvailabilityAction,
   bookAppointmentAction,
+  createCareOrderAction,
+  issuePrescriptionAction,
+  markInvoicePaidAction,
+  patientCheckInAction,
+  saveEncounterNoteAction,
+  signEncounterNoteAction,
+  updateConsultationStatusAction,
   updateAppointmentStatusAction,
 } from "@/app/workspace/actions";
 import { requireProfile } from "@/lib/auth/session";
@@ -80,6 +87,61 @@ type AuditLogRow = {
   created_at: string;
 };
 
+type ConsultationSessionRow = {
+  id: string;
+  appointment_id: string;
+  patient_id: string;
+  provider_id: string;
+  status: string;
+  room_name: string | null;
+  patient_ready_at: string | null;
+  provider_ready_at: string | null;
+  started_at: string | null;
+  ended_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type EncounterNoteRow = {
+  id: string;
+  appointment_id: string;
+  patient_id: string;
+  provider_id: string;
+  subjective: string;
+  objective: string;
+  assessment: string;
+  plan: string;
+  status: string;
+  signed_at: string | null;
+  signed_by: string | null;
+  updated_at: string;
+};
+
+type CareOrderRow = {
+  id: string;
+  appointment_id: string;
+  patient_id: string;
+  provider_id: string;
+  order_type: string;
+  title: string;
+  details: string | null;
+  due_date: string | null;
+  status: string;
+  created_at: string;
+};
+
+type InvoiceRow = {
+  id: string;
+  appointment_id: string | null;
+  patient_id: string;
+  provider_id: string | null;
+  amount: number;
+  currency: string;
+  status: string;
+  paid_at: string | null;
+  created_at: string;
+};
+
 type StatusSummary = {
   booked: number;
   in_progress: number;
@@ -111,6 +173,11 @@ const WEEKDAYS = [
 function asString(value: string | string[] | undefined) {
   if (Array.isArray(value)) return value[0] ?? "";
   return value ?? "";
+}
+
+function isMissingRelationError(message: string) {
+  const lowered = message.toLowerCase();
+  return lowered.includes("could not find the table") || lowered.includes("does not exist");
 }
 
 function isAppointmentStatus(value: string): value is AppointmentStatus {
@@ -168,6 +235,18 @@ function formatTime(value: string) {
   });
 }
 
+function formatCurrency(amount: number, currency: string) {
+  try {
+    return new Intl.NumberFormat("en-IN", {
+      style: "currency",
+      currency,
+      maximumFractionDigits: 2,
+    }).format(amount);
+  } catch {
+    return `${currency} ${amount}`;
+  }
+}
+
 function dateTimeLocalNow() {
   const now = new Date();
   const offset = now.getTimezoneOffset() * 60000;
@@ -180,6 +259,15 @@ function statusBadgeClass(status: string) {
     return "border-cyan-200 bg-cyan-50 text-cyan-800";
   }
   if (status === "in_progress") {
+    return "border-indigo-200 bg-indigo-50 text-indigo-800";
+  }
+  if (status === "checked_in") {
+    return "border-blue-200 bg-blue-50 text-blue-800";
+  }
+  if (status === "ready") {
+    return "border-violet-200 bg-violet-50 text-violet-800";
+  }
+  if (status === "in_consult") {
     return "border-indigo-200 bg-indigo-50 text-indigo-800";
   }
   if (status === "completed") {
@@ -195,7 +283,7 @@ function statusBadgeClass(status: string) {
 }
 
 function statusLabel(value: string) {
-  return value.replace("_", " ");
+  return value.replace(/_/g, " ");
 }
 
 function shortId(value: string) {
@@ -239,6 +327,10 @@ export default async function ModuleWorkspacePage({
   let availability: AvailabilityRow[] = [];
   let prescriptions: PrescriptionRow[] = [];
   let auditLogs: AuditLogRow[] = [];
+  let consultationSessions: ConsultationSessionRow[] = [];
+  let encounterNotes: EncounterNoteRow[] = [];
+  let careOrders: CareOrderRow[] = [];
+  let invoices: InvoiceRow[] = [];
 
   let providerCount = 0;
   let patientCount = 0;
@@ -278,6 +370,9 @@ export default async function ModuleWorkspacePage({
       const [
         { data: appointmentRows, error: appointmentError },
         { data: prescriptionRows, error: prescriptionError },
+        { data: sessionRows, error: sessionError },
+        { data: careOrderRows, error: careOrderError },
+        { data: invoiceRows, error: invoiceError },
       ] = await Promise.all([
         supabase
           .from("appointments")
@@ -295,13 +390,39 @@ export default async function ModuleWorkspacePage({
           .eq("patient_id", user.id)
           .order("issued_at", { ascending: false })
           .limit(60),
+        supabase
+          .from("consultation_sessions")
+          .select(
+            "id,appointment_id,patient_id,provider_id,status,room_name,patient_ready_at,provider_ready_at,started_at,ended_at,created_at,updated_at",
+          )
+          .eq("patient_id", user.id)
+          .order("updated_at", { ascending: false })
+          .limit(80),
+        supabase
+          .from("care_orders")
+          .select("id,appointment_id,patient_id,provider_id,order_type,title,details,due_date,status,created_at")
+          .eq("patient_id", user.id)
+          .order("created_at", { ascending: false })
+          .limit(80),
+        supabase
+          .from("billing_invoices")
+          .select("id,appointment_id,patient_id,provider_id,amount,currency,status,paid_at,created_at")
+          .eq("patient_id", user.id)
+          .order("created_at", { ascending: false })
+          .limit(80),
       ]);
 
       appointments = (appointmentRows as AppointmentRow[] | null) ?? [];
       prescriptions = (prescriptionRows as PrescriptionRow[] | null) ?? [];
+      consultationSessions = (sessionRows as ConsultationSessionRow[] | null) ?? [];
+      careOrders = (careOrderRows as CareOrderRow[] | null) ?? [];
+      invoices = (invoiceRows as InvoiceRow[] | null) ?? [];
       dbError =
         appointmentError?.message ??
         prescriptionError?.message ??
+        sessionError?.message ??
+        careOrderError?.message ??
+        invoiceError?.message ??
         dbError;
     }
 
@@ -322,17 +443,43 @@ export default async function ModuleWorkspacePage({
 
   if (persona === "provider") {
     if (module === "dashboard") {
-      const { data: appointmentRows, error: appointmentError } = await supabase
-        .from("appointments")
-        .select(
-          "id,patient_id,provider_id,scheduled_at,duration_minutes,reason,status,meeting_url,notes",
-        )
-        .eq("provider_id", user.id)
-        .order("scheduled_at", { ascending: true })
-        .limit(80);
+      const [
+        { data: appointmentRows, error: appointmentError },
+        { data: sessionRows, error: sessionError },
+        { data: invoiceRows, error: invoiceError },
+      ] = await Promise.all([
+        supabase
+          .from("appointments")
+          .select(
+            "id,patient_id,provider_id,scheduled_at,duration_minutes,reason,status,meeting_url,notes",
+          )
+          .eq("provider_id", user.id)
+          .order("scheduled_at", { ascending: true })
+          .limit(80),
+        supabase
+          .from("consultation_sessions")
+          .select(
+            "id,appointment_id,patient_id,provider_id,status,room_name,patient_ready_at,provider_ready_at,started_at,ended_at,created_at,updated_at",
+          )
+          .eq("provider_id", user.id)
+          .order("updated_at", { ascending: false })
+          .limit(120),
+        supabase
+          .from("billing_invoices")
+          .select("id,appointment_id,patient_id,provider_id,amount,currency,status,paid_at,created_at")
+          .eq("provider_id", user.id)
+          .order("created_at", { ascending: false })
+          .limit(80),
+      ]);
 
       appointments = (appointmentRows as AppointmentRow[] | null) ?? [];
-      dbError = appointmentError?.message ?? dbError;
+      consultationSessions = (sessionRows as ConsultationSessionRow[] | null) ?? [];
+      invoices = (invoiceRows as InvoiceRow[] | null) ?? [];
+      dbError =
+        appointmentError?.message ??
+        sessionError?.message ??
+        invoiceError?.message ??
+        dbError;
     }
 
     if (module === "schedule") {
@@ -354,6 +501,9 @@ export default async function ModuleWorkspacePage({
       const [
         { data: appointmentRows, error: appointmentError },
         { data: prescriptionRows, error: prescriptionError },
+        { data: sessionRows, error: sessionError },
+        { data: noteRows, error: noteError },
+        { data: careOrderRows, error: careOrderError },
       ] = await Promise.all([
         supabase
           .from("appointments")
@@ -371,13 +521,41 @@ export default async function ModuleWorkspacePage({
           .eq("provider_id", user.id)
           .order("issued_at", { ascending: false })
           .limit(120),
+        supabase
+          .from("consultation_sessions")
+          .select(
+            "id,appointment_id,patient_id,provider_id,status,room_name,patient_ready_at,provider_ready_at,started_at,ended_at,created_at,updated_at",
+          )
+          .eq("provider_id", user.id)
+          .order("updated_at", { ascending: false })
+          .limit(120),
+        supabase
+          .from("encounter_notes")
+          .select(
+            "id,appointment_id,patient_id,provider_id,subjective,objective,assessment,plan,status,signed_at,signed_by,updated_at",
+          )
+          .eq("provider_id", user.id)
+          .order("updated_at", { ascending: false })
+          .limit(120),
+        supabase
+          .from("care_orders")
+          .select("id,appointment_id,patient_id,provider_id,order_type,title,details,due_date,status,created_at")
+          .eq("provider_id", user.id)
+          .order("created_at", { ascending: false })
+          .limit(120),
       ]);
 
       appointments = (appointmentRows as AppointmentRow[] | null) ?? [];
       prescriptions = (prescriptionRows as PrescriptionRow[] | null) ?? [];
+      consultationSessions = (sessionRows as ConsultationSessionRow[] | null) ?? [];
+      encounterNotes = (noteRows as EncounterNoteRow[] | null) ?? [];
+      careOrders = (careOrderRows as CareOrderRow[] | null) ?? [];
       dbError =
         appointmentError?.message ??
         prescriptionError?.message ??
+        sessionError?.message ??
+        noteError?.message ??
+        careOrderError?.message ??
         dbError;
     }
   }
@@ -394,6 +572,8 @@ export default async function ModuleWorkspacePage({
         { count: activeCount, error: activeError },
         { count: providerTotal, error: providerError },
         { count: patientTotal, error: patientError },
+        { data: sessionRows, error: sessionError },
+        { data: invoiceRows, error: invoiceError },
       ] = await Promise.all([
         supabase
           .from("appointments")
@@ -415,18 +595,34 @@ export default async function ModuleWorkspacePage({
           .from("profiles")
           .select("id", { count: "exact", head: true })
           .eq("role", "patient"),
+        supabase
+          .from("consultation_sessions")
+          .select(
+            "id,appointment_id,patient_id,provider_id,status,room_name,patient_ready_at,provider_ready_at,started_at,ended_at,created_at,updated_at",
+          )
+          .order("updated_at", { ascending: false })
+          .limit(160),
+        supabase
+          .from("billing_invoices")
+          .select("id,appointment_id,patient_id,provider_id,amount,currency,status,paid_at,created_at")
+          .order("created_at", { ascending: false })
+          .limit(160),
       ]);
 
       todayAppointments = (todayRows as AppointmentRow[] | null) ?? [];
       activeSessions = activeCount ?? 0;
       providerCount = providerTotal ?? 0;
       patientCount = patientTotal ?? 0;
+      consultationSessions = (sessionRows as ConsultationSessionRow[] | null) ?? [];
+      invoices = (invoiceRows as InvoiceRow[] | null) ?? [];
 
       dbError =
         todayError?.message ??
         activeError?.message ??
         providerError?.message ??
         patientError?.message ??
+        sessionError?.message ??
+        invoiceError?.message ??
         dbError;
     }
 
@@ -434,6 +630,8 @@ export default async function ModuleWorkspacePage({
       const [
         { data: appointmentRows, error: appointmentError },
         { data: providerRows, error: providerError },
+        { data: sessionRows, error: sessionError },
+        { data: invoiceRows, error: invoiceError },
       ] = await Promise.all([
         supabase
           .from("appointments")
@@ -447,13 +645,29 @@ export default async function ModuleWorkspacePage({
           .select("id,role,full_name")
           .eq("role", "provider")
           .order("created_at", { ascending: true }),
+        supabase
+          .from("consultation_sessions")
+          .select(
+            "id,appointment_id,patient_id,provider_id,status,room_name,patient_ready_at,provider_ready_at,started_at,ended_at,created_at,updated_at",
+          )
+          .order("updated_at", { ascending: false })
+          .limit(160),
+        supabase
+          .from("billing_invoices")
+          .select("id,appointment_id,patient_id,provider_id,amount,currency,status,paid_at,created_at")
+          .order("created_at", { ascending: false })
+          .limit(160),
       ]);
 
       appointments = (appointmentRows as AppointmentRow[] | null) ?? [];
       providers = (providerRows as ProfileRow[] | null) ?? [];
+      consultationSessions = (sessionRows as ConsultationSessionRow[] | null) ?? [];
+      invoices = (invoiceRows as InvoiceRow[] | null) ?? [];
       dbError =
         appointmentError?.message ??
         providerError?.message ??
+        sessionError?.message ??
+        invoiceError?.message ??
         dbError;
     }
 
@@ -468,6 +682,14 @@ export default async function ModuleWorkspacePage({
       dbError = auditError?.message ?? dbError;
     }
   }
+
+  let migrationWarning = "";
+  if (dbError && isMissingRelationError(dbError)) {
+    migrationWarning =
+      "Advanced clinical and billing modules are ready in code. Run supabase/migrations/0002_phase_a_clinical_core.sql to enable them.";
+    dbError = "";
+  }
+
   const profileIds = new Set<string>();
 
   providers.forEach((item) => profileIds.add(item.id));
@@ -486,6 +708,23 @@ export default async function ModuleWorkspacePage({
   prescriptions.forEach((item) => {
     profileIds.add(item.patient_id);
     profileIds.add(item.provider_id);
+  });
+  invoices.forEach((item) => {
+    profileIds.add(item.patient_id);
+    if (item.provider_id) {
+      profileIds.add(item.provider_id);
+    }
+  });
+  consultationSessions.forEach((item) => {
+    profileIds.add(item.patient_id);
+    profileIds.add(item.provider_id);
+  });
+  encounterNotes.forEach((item) => {
+    profileIds.add(item.patient_id);
+    profileIds.add(item.provider_id);
+    if (item.signed_by) {
+      profileIds.add(item.signed_by);
+    }
   });
   auditLogs.forEach((item) => {
     if (item.actor_id) {
@@ -521,6 +760,35 @@ export default async function ModuleWorkspacePage({
     : appointments;
 
   const summary = statusSummaryFromAppointments(activeAppointments);
+  const consultationInProgressCount = consultationSessions.filter((item) => item.status === "in_consult").length;
+  const consultationCheckedInCount = consultationSessions.filter((item) => item.status === "checked_in").length;
+  const paidInvoiceCount = invoices.filter((item) => item.status === "paid").length;
+  const pendingInvoiceCount = invoices.filter((item) => item.status === "pending").length;
+  const billedRevenue = invoices
+    .filter((item) => item.status === "paid")
+    .reduce((acc, item) => acc + item.amount, 0);
+
+  const sessionByAppointment = new Map<string, ConsultationSessionRow>(
+    consultationSessions.map((item) => [item.appointment_id, item]),
+  );
+  const noteByAppointment = new Map<string, EncounterNoteRow>(
+    encounterNotes.map((item) => [item.appointment_id, item]),
+  );
+
+  const invoicesByAppointment = new Map<string, InvoiceRow[]>();
+  invoices.forEach((item) => {
+    const key = item.appointment_id ?? "unassigned";
+    const bucket = invoicesByAppointment.get(key) ?? [];
+    bucket.push(item);
+    invoicesByAppointment.set(key, bucket);
+  });
+
+  const careOrdersByAppointment = new Map<string, CareOrderRow[]>();
+  careOrders.forEach((item) => {
+    const bucket = careOrdersByAppointment.get(item.appointment_id) ?? [];
+    bucket.push(item);
+    careOrdersByAppointment.set(item.appointment_id, bucket);
+  });
 
   const patientInsights = new Map<
     string,
@@ -645,6 +913,11 @@ export default async function ModuleWorkspacePage({
             {dbError}
           </section>
         ) : null}
+        {migrationWarning ? (
+          <section className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+            {migrationWarning}
+          </section>
+        ) : null}
         {persona === "patient" && module === "booking" ? (
           <section className="grid gap-4 lg:grid-cols-[1.05fr_1fr]">
             <article className="rounded-2xl border border-white/70 bg-white/92 p-5 shadow-[0_16px_45px_-35px_rgba(15,23,42,0.85)]">
@@ -693,6 +966,19 @@ export default async function ModuleWorkspacePage({
                     name="reason"
                     rows={4}
                     placeholder="Share symptoms or purpose"
+                    className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                  />
+                </label>
+                <label className="grid gap-1">
+                  <span className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-600">
+                    Consultation Fee (Demo)
+                  </span>
+                  <input
+                    type="number"
+                    name="invoice_amount"
+                    min={0}
+                    step="0.01"
+                    defaultValue={499}
                     className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
                   />
                 </label>
@@ -784,64 +1070,174 @@ export default async function ModuleWorkspacePage({
                     No appointments recorded.
                   </p>
                 ) : (
-                  appointments.map((item) => (
-                    <div
-                      key={item.id}
-                      className="rounded-xl border border-slate-200 bg-slate-50/90 p-3"
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <p className="text-sm font-semibold text-slate-900">
-                          {formatDateTime(item.scheduled_at)}
+                  appointments.map((item) => {
+                    const session = sessionByAppointment.get(item.id);
+                    const appointmentInvoices = invoicesByAppointment.get(item.id) ?? [];
+                    const appointmentOrders = careOrdersByAppointment.get(item.id) ?? [];
+
+                    return (
+                      <div
+                        key={item.id}
+                        className="rounded-xl border border-slate-200 bg-slate-50/90 p-3"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-sm font-semibold text-slate-900">
+                            {formatDateTime(item.scheduled_at)}
+                          </p>
+                          <span
+                            className={`inline-flex rounded-md border px-2 py-0.5 text-xs font-semibold ${statusBadgeClass(item.status)}`}
+                          >
+                            {statusLabel(item.status)}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-xs text-slate-600">
+                          Provider: {resolveName(item.provider_id)}
                         </p>
-                        <span
-                          className={`inline-flex rounded-md border px-2 py-0.5 text-xs font-semibold ${statusBadgeClass(item.status)}`}
-                        >
-                          {statusLabel(item.status)}
-                        </span>
+                        <p className="mt-1 text-sm text-slate-700">
+                          {item.reason ?? "No reason added"}
+                        </p>
+                        {item.notes ? (
+                          <p className="mt-1 text-xs text-slate-500">Notes: {item.notes}</p>
+                        ) : null}
+
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <span
+                            className={`inline-flex rounded-md border px-2 py-0.5 text-xs font-semibold ${statusBadgeClass(session?.status ?? "scheduled")}`}
+                          >
+                            Consultation: {statusLabel(session?.status ?? "scheduled")}
+                          </span>
+                          {session?.started_at ? (
+                            <span className="text-xs text-slate-500">
+                              Started: {formatDateTime(session.started_at)}
+                            </span>
+                          ) : null}
+                        </div>
+
+                        {(item.status === "booked" || session?.status === "scheduled" || session?.status === "ready") ? (
+                          <form action={patientCheckInAction} className="mt-2">
+                            <input type="hidden" name="return_to" value={currentPath} />
+                            <input type="hidden" name="appointment_id" value={item.id} />
+                            <button
+                              type="submit"
+                              className="rounded-md bg-cyan-700 px-2.5 py-1 text-xs font-semibold text-white"
+                            >
+                              Check In For Visit
+                            </button>
+                          </form>
+                        ) : null}
+
+                        {appointmentInvoices.length > 0 ? (
+                          <div className="mt-2 space-y-1">
+                            {appointmentInvoices.map((invoice) => (
+                              <div key={invoice.id} className="rounded-md border border-slate-200 bg-white px-2.5 py-2">
+                                <p className="text-xs font-semibold text-slate-700">
+                                  Invoice {formatCurrency(invoice.amount, invoice.currency)}
+                                </p>
+                                <div className="mt-1 flex flex-wrap items-center gap-2">
+                                  <span
+                                    className={`inline-flex rounded-md border px-2 py-0.5 text-[11px] font-semibold ${statusBadgeClass(invoice.status)}`}
+                                  >
+                                    {statusLabel(invoice.status)}
+                                  </span>
+                                  {invoice.status !== "paid" ? (
+                                    <form action={markInvoicePaidAction}>
+                                      <input type="hidden" name="return_to" value={currentPath} />
+                                      <input type="hidden" name="invoice_id" value={invoice.id} />
+                                      <button
+                                        type="submit"
+                                        className="rounded-md border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-800"
+                                      >
+                                        Pay Now (Demo)
+                                      </button>
+                                    </form>
+                                  ) : (
+                                    <span className="text-[11px] text-slate-500">
+                                      Paid at {invoice.paid_at ? formatDateTime(invoice.paid_at) : "N/A"}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : null}
+
+                        {appointmentOrders.length > 0 ? (
+                          <div className="mt-2 rounded-md border border-slate-200 bg-white px-2.5 py-2">
+                            <p className="text-xs font-semibold text-slate-700">Care Orders</p>
+                            <div className="mt-1 space-y-1">
+                              {appointmentOrders.slice(0, 3).map((order) => (
+                                <p key={order.id} className="text-[11px] text-slate-600">
+                                  {order.title} ({statusLabel(order.status)})
+                                  {order.due_date ? ` | Due ${formatDate(order.due_date)}` : ""}
+                                </p>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
                       </div>
-                      <p className="mt-1 text-xs text-slate-600">
-                        Provider: {resolveName(item.provider_id)}
-                      </p>
-                      <p className="mt-1 text-sm text-slate-700">
-                        {item.reason ?? "No reason added"}
-                      </p>
-                      {item.notes ? (
-                        <p className="mt-1 text-xs text-slate-500">Notes: {item.notes}</p>
-                      ) : null}
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </article>
-            <article className="rounded-2xl border border-white/70 bg-white/92 p-5 shadow-[0_16px_45px_-35px_rgba(15,23,42,0.85)]">
-              <h3 className="text-sm font-semibold uppercase tracking-[0.08em] text-slate-600">
-                Prescriptions
-              </h3>
-              <div className="mt-3 space-y-2">
-                {prescriptions.length === 0 ? (
-                  <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
-                    No prescriptions found.
-                  </p>
-                ) : (
-                  prescriptions.slice(0, 12).map((item) => (
-                    <div
-                      key={item.id}
-                      className="rounded-lg border border-slate-200 bg-white px-3 py-2"
-                    >
-                      <p className="text-sm font-semibold text-slate-900">
-                        {item.medication_name}
-                      </p>
-                      <p className="text-xs text-slate-600">
-                        {item.dosage} | {statusLabel(item.status)}
-                      </p>
-                      <p className="text-xs text-slate-500">
-                        Issued: {formatDate(item.issued_at)}
-                      </p>
-                    </div>
-                  ))
-                )}
-              </div>
-            </article>
+            <div className="space-y-4">
+              <article className="rounded-2xl border border-white/70 bg-white/92 p-5 shadow-[0_16px_45px_-35px_rgba(15,23,42,0.85)]">
+                <h3 className="text-sm font-semibold uppercase tracking-[0.08em] text-slate-600">
+                  Prescriptions
+                </h3>
+                <div className="mt-3 space-y-2">
+                  {prescriptions.length === 0 ? (
+                    <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                      No prescriptions found.
+                    </p>
+                  ) : (
+                    prescriptions.slice(0, 12).map((item) => (
+                      <div
+                        key={item.id}
+                        className="rounded-lg border border-slate-200 bg-white px-3 py-2"
+                      >
+                        <p className="text-sm font-semibold text-slate-900">
+                          {item.medication_name}
+                        </p>
+                        <p className="text-xs text-slate-600">
+                          {item.dosage} | {statusLabel(item.status)}
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          Issued: {formatDate(item.issued_at)}
+                        </p>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </article>
+              <article className="rounded-2xl border border-white/70 bg-white/92 p-5 shadow-[0_16px_45px_-35px_rgba(15,23,42,0.85)]">
+                <h3 className="text-sm font-semibold uppercase tracking-[0.08em] text-slate-600">
+                  Care Plans and Orders
+                </h3>
+                <div className="mt-3 space-y-2">
+                  {careOrders.length === 0 ? (
+                    <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                      No care orders shared yet.
+                    </p>
+                  ) : (
+                    careOrders.slice(0, 10).map((order) => (
+                      <div key={order.id} className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                        <p className="text-sm font-semibold text-slate-900">{order.title}</p>
+                        <p className="text-xs text-slate-600">
+                          {statusLabel(order.order_type)} | {statusLabel(order.status)}
+                        </p>
+                        {order.details ? (
+                          <p className="text-xs text-slate-500">{order.details}</p>
+                        ) : null}
+                        {order.due_date ? (
+                          <p className="text-xs text-slate-500">Due: {formatDate(order.due_date)}</p>
+                        ) : null}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </article>
+            </div>
           </section>
         ) : null}
 
@@ -912,44 +1308,90 @@ export default async function ModuleWorkspacePage({
                     No patient queue for now.
                   </p>
                 ) : (
-                  appointments.map((item) => (
-                    <div
-                      key={item.id}
-                      className="rounded-xl border border-slate-200 bg-white p-3"
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <p className="text-sm font-semibold text-slate-900">
-                          {resolveName(item.patient_id)}
+                  appointments.map((item) => {
+                    const session = sessionByAppointment.get(item.id);
+                    const appointmentInvoices = invoicesByAppointment.get(item.id) ?? [];
+                    const consultationState = session?.status ?? "scheduled";
+
+                    return (
+                      <div
+                        key={item.id}
+                        className="rounded-xl border border-slate-200 bg-white p-3"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-sm font-semibold text-slate-900">
+                            {resolveName(item.patient_id)}
+                          </p>
+                          <span
+                            className={`inline-flex rounded-md border px-2 py-0.5 text-xs font-semibold ${statusBadgeClass(item.status)}`}
+                          >
+                            {statusLabel(item.status)}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-xs text-slate-600">
+                          {formatDateTime(item.scheduled_at)} | {item.duration_minutes} mins
                         </p>
-                        <span
-                          className={`inline-flex rounded-md border px-2 py-0.5 text-xs font-semibold ${statusBadgeClass(item.status)}`}
-                        >
-                          {statusLabel(item.status)}
-                        </span>
+                        <p className="mt-1 text-sm text-slate-700">
+                          {item.reason ?? "No reason shared"}
+                        </p>
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <span
+                            className={`inline-flex rounded-md border px-2 py-0.5 text-xs font-semibold ${statusBadgeClass(consultationState)}`}
+                          >
+                            Consultation: {statusLabel(consultationState)}
+                          </span>
+                          {session?.patient_ready_at ? (
+                            <span className="text-xs text-slate-500">
+                              Patient ready: {formatDateTime(session.patient_ready_at)}
+                            </span>
+                          ) : null}
+                        </div>
+
+                        <div className="mt-3 flex flex-wrap gap-1.5">
+                          {["ready", "in_consult", "completed", "cancelled"].map((state) => (
+                            <form key={state} action={updateConsultationStatusAction}>
+                              <input type="hidden" name="return_to" value={currentPath} />
+                              <input type="hidden" name="appointment_id" value={item.id} />
+                              <input type="hidden" name="status" value={state} />
+                              <button
+                                type="submit"
+                                className="rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:border-slate-400"
+                              >
+                                Consultation {statusLabel(state)}
+                              </button>
+                            </form>
+                          ))}
+                        </div>
+
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {["in_progress", "completed", "cancelled", "no_show"].map((state) => (
+                            <form key={state} action={updateAppointmentStatusAction}>
+                              <input type="hidden" name="return_to" value={currentPath} />
+                              <input type="hidden" name="appointment_id" value={item.id} />
+                              <input type="hidden" name="status" value={state} />
+                              <button
+                                type="submit"
+                                className="rounded-md border border-slate-300 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:border-slate-400"
+                              >
+                                Mark {statusLabel(state)}
+                              </button>
+                            </form>
+                          ))}
+                        </div>
+
+                        {appointmentInvoices.length > 0 ? (
+                          <div className="mt-2 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-2">
+                            {appointmentInvoices.slice(0, 2).map((invoice) => (
+                              <p key={invoice.id} className="text-xs text-slate-600">
+                                Billing: {formatCurrency(invoice.amount, invoice.currency)} |{" "}
+                                {statusLabel(invoice.status)}
+                              </p>
+                            ))}
+                          </div>
+                        ) : null}
                       </div>
-                      <p className="mt-1 text-xs text-slate-600">
-                        {formatDateTime(item.scheduled_at)} | {item.duration_minutes} mins
-                      </p>
-                      <p className="mt-1 text-sm text-slate-700">
-                        {item.reason ?? "No reason shared"}
-                      </p>
-                      <div className="mt-3 flex flex-wrap gap-1.5">
-                        {["in_progress", "completed", "cancelled", "no_show"].map((state) => (
-                          <form key={state} action={updateAppointmentStatusAction}>
-                            <input type="hidden" name="return_to" value={currentPath} />
-                            <input type="hidden" name="appointment_id" value={item.id} />
-                            <input type="hidden" name="status" value={state} />
-                            <button
-                              type="submit"
-                              className="rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:border-slate-400"
-                            >
-                              Mark {statusLabel(state)}
-                            </button>
-                          </form>
-                        ))}
-                      </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </article>
@@ -1066,7 +1508,7 @@ export default async function ModuleWorkspacePage({
         ) : null}
 
         {persona === "provider" && module === "patients" ? (
-          <section className="grid gap-4 lg:grid-cols-[1.05fr_1.2fr]">
+          <section className="grid gap-4 xl:grid-cols-[0.9fr_1.5fr]">
             <article className="rounded-2xl border border-white/70 bg-white/92 p-5 shadow-[0_16px_45px_-35px_rgba(15,23,42,0.85)]">
               <h2 className="text-lg font-semibold text-slate-900">Patient Panel</h2>
               <div className="mt-3 space-y-2">
@@ -1100,46 +1542,231 @@ export default async function ModuleWorkspacePage({
                 )}
               </div>
             </article>
-            <article className="rounded-2xl border border-white/70 bg-white/92 p-5 shadow-[0_16px_45px_-35px_rgba(15,23,42,0.85)]">
-              <h2 className="text-lg font-semibold text-slate-900">
-                Recent Prescriptions Issued
-              </h2>
-              <div className="mt-3 space-y-2">
-                {prescriptions.length === 0 ? (
-                  <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
-                    No prescriptions in your queue.
-                  </p>
-                ) : (
-                  prescriptions.slice(0, 20).map((item) => (
-                    <div
-                      key={item.id}
-                      className="rounded-lg border border-slate-200 bg-white p-3"
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="text-sm font-semibold text-slate-900">
-                          {item.medication_name}
+            <article className="space-y-4">
+              <div className="rounded-2xl border border-white/70 bg-white/92 p-5 shadow-[0_16px_45px_-35px_rgba(15,23,42,0.85)]">
+                <h2 className="text-lg font-semibold text-slate-900">Clinical Workbench</h2>
+                <p className="mt-1 text-sm text-slate-600">
+                  Complete SOAP notes, prescriptions, and care orders per appointment.
+                </p>
+                <div className="mt-3 space-y-3">
+                  {appointments.length === 0 ? (
+                    <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                      No appointments in provider panel.
+                    </p>
+                  ) : (
+                    appointments.slice(0, 8).map((item) => {
+                      const note = noteByAppointment.get(item.id);
+                      const session = sessionByAppointment.get(item.id);
+                      const orders = careOrdersByAppointment.get(item.id) ?? [];
+
+                      return (
+                        <div key={item.id} className="rounded-lg border border-slate-200 bg-white p-3">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-sm font-semibold text-slate-900">
+                              {resolveName(item.patient_id)} | {formatDateTime(item.scheduled_at)}
+                            </p>
+                            <div className="flex flex-wrap gap-1">
+                              <span
+                                className={`inline-flex rounded-md border px-2 py-0.5 text-xs font-semibold ${statusBadgeClass(item.status)}`}
+                              >
+                                {statusLabel(item.status)}
+                              </span>
+                              <span
+                                className={`inline-flex rounded-md border px-2 py-0.5 text-xs font-semibold ${statusBadgeClass(session?.status ?? "scheduled")}`}
+                              >
+                                {statusLabel(session?.status ?? "scheduled")}
+                              </span>
+                              <span
+                                className={`inline-flex rounded-md border px-2 py-0.5 text-xs font-semibold ${statusBadgeClass(note?.status ?? "draft")}`}
+                              >
+                                Note {statusLabel(note?.status ?? "draft")}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="mt-2 grid gap-2 xl:grid-cols-2">
+                            <form action={saveEncounterNoteAction} className="grid gap-2 rounded-md border border-slate-200 bg-slate-50 p-2.5">
+                              <input type="hidden" name="return_to" value={currentPath} />
+                              <input type="hidden" name="appointment_id" value={item.id} />
+                              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-600">SOAP Note</p>
+                              <textarea
+                                name="subjective"
+                                rows={2}
+                                defaultValue={note?.subjective ?? ""}
+                                placeholder="Subjective"
+                                className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-800"
+                              />
+                              <textarea
+                                name="objective"
+                                rows={2}
+                                defaultValue={note?.objective ?? ""}
+                                placeholder="Objective"
+                                className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-800"
+                              />
+                              <textarea
+                                name="assessment"
+                                rows={2}
+                                defaultValue={note?.assessment ?? ""}
+                                placeholder="Assessment"
+                                className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-800"
+                              />
+                              <textarea
+                                name="plan"
+                                rows={2}
+                                defaultValue={note?.plan ?? ""}
+                                placeholder="Plan"
+                                className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-800"
+                              />
+                              <button
+                                type="submit"
+                                className="rounded-md bg-slate-900 px-2.5 py-1 text-xs font-semibold text-white"
+                              >
+                                Save Draft
+                              </button>
+                            </form>
+
+                            <div className="grid gap-2">
+                              <form action={issuePrescriptionAction} className="grid gap-2 rounded-md border border-slate-200 bg-slate-50 p-2.5">
+                                <input type="hidden" name="return_to" value={currentPath} />
+                                <input type="hidden" name="appointment_id" value={item.id} />
+                                <p className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-600">Issue Prescription</p>
+                                <input
+                                  name="medication_name"
+                                  placeholder="Medication name"
+                                  required
+                                  className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-800"
+                                />
+                                <input
+                                  name="dosage"
+                                  placeholder="Dosage"
+                                  required
+                                  className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-800"
+                                />
+                                <textarea
+                                  name="instructions"
+                                  rows={2}
+                                  placeholder="Instructions"
+                                  className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-800"
+                                />
+                                <button
+                                  type="submit"
+                                  className="rounded-md bg-emerald-700 px-2.5 py-1 text-xs font-semibold text-white"
+                                >
+                                  Issue Rx
+                                </button>
+                              </form>
+
+                              <form action={createCareOrderAction} className="grid gap-2 rounded-md border border-slate-200 bg-slate-50 p-2.5">
+                                <input type="hidden" name="return_to" value={currentPath} />
+                                <input type="hidden" name="appointment_id" value={item.id} />
+                                <p className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-600">Create Care Order</p>
+                                <select
+                                  name="order_type"
+                                  defaultValue="follow_up"
+                                  className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-800"
+                                >
+                                  <option value="follow_up">Follow Up</option>
+                                  <option value="lab">Lab</option>
+                                  <option value="imaging">Imaging</option>
+                                  <option value="lifestyle">Lifestyle</option>
+                                  <option value="other">Other</option>
+                                </select>
+                                <input
+                                  name="title"
+                                  placeholder="Order title"
+                                  required
+                                  className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-800"
+                                />
+                                <textarea
+                                  name="details"
+                                  rows={2}
+                                  placeholder="Details"
+                                  className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-800"
+                                />
+                                <input
+                                  type="date"
+                                  name="due_date"
+                                  className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-800"
+                                />
+                                <button
+                                  type="submit"
+                                  className="rounded-md bg-indigo-700 px-2.5 py-1 text-xs font-semibold text-white"
+                                >
+                                  Add Order
+                                </button>
+                              </form>
+                            </div>
+                          </div>
+
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            <form action={signEncounterNoteAction}>
+                              <input type="hidden" name="return_to" value={currentPath} />
+                              <input type="hidden" name="appointment_id" value={item.id} />
+                              <button
+                                type="submit"
+                                className="rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700"
+                              >
+                                Sign Note & Complete Visit
+                              </button>
+                            </form>
+                          </div>
+
+                          {orders.length > 0 ? (
+                            <div className="mt-2 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-2">
+                              {orders.slice(0, 3).map((order) => (
+                                <p key={order.id} className="text-xs text-slate-600">
+                                  {order.title} ({statusLabel(order.status)})
+                                </p>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+              <div className="rounded-2xl border border-white/70 bg-white/92 p-5 shadow-[0_16px_45px_-35px_rgba(15,23,42,0.85)]">
+                <h2 className="text-lg font-semibold text-slate-900">
+                  Recent Prescriptions Issued
+                </h2>
+                <div className="mt-3 space-y-2">
+                  {prescriptions.length === 0 ? (
+                    <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                      No prescriptions in your queue.
+                    </p>
+                  ) : (
+                    prescriptions.slice(0, 20).map((item) => (
+                      <div
+                        key={item.id}
+                        className="rounded-lg border border-slate-200 bg-white p-3"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-sm font-semibold text-slate-900">
+                            {item.medication_name}
+                          </p>
+                          <span
+                            className={`inline-flex rounded-md border px-2 py-0.5 text-xs font-semibold ${statusBadgeClass(item.status)}`}
+                          >
+                            {statusLabel(item.status)}
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-600">{item.dosage}</p>
+                        <p className="text-xs text-slate-500">
+                          Patient: {resolveName(item.patient_id)} | Issued:{" "}
+                          {formatDate(item.issued_at)}
                         </p>
-                        <span
-                          className={`inline-flex rounded-md border px-2 py-0.5 text-xs font-semibold ${statusBadgeClass(item.status)}`}
-                        >
-                          {statusLabel(item.status)}
-                        </span>
                       </div>
-                      <p className="text-xs text-slate-600">{item.dosage}</p>
-                      <p className="text-xs text-slate-500">
-                        Patient: {resolveName(item.patient_id)} | Issued:{" "}
-                        {formatDate(item.issued_at)}
-                      </p>
-                    </div>
-                  ))
-                )}
+                    ))
+                  )}
+                </div>
               </div>
             </article>
           </section>
         ) : null}
         {persona === "admin" && module === "pulse" ? (
           <section className="space-y-4">
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-8">
               <article className="rounded-xl border border-white/70 bg-white/92 p-4 shadow-sm">
                 <p className="text-xs uppercase tracking-[0.08em] text-slate-500">
                   Active Sessions
@@ -1169,6 +1796,26 @@ export default async function ModuleWorkspacePage({
                   Booked Queue
                 </p>
                 <p className="mt-1 text-2xl font-semibold text-slate-900">{summary.booked}</p>
+              </article>
+              <article className="rounded-xl border border-white/70 bg-white/92 p-4 shadow-sm">
+                <p className="text-xs uppercase tracking-[0.08em] text-slate-500">
+                  Checked In
+                </p>
+                <p className="mt-1 text-2xl font-semibold text-slate-900">{consultationCheckedInCount}</p>
+              </article>
+              <article className="rounded-xl border border-white/70 bg-white/92 p-4 shadow-sm">
+                <p className="text-xs uppercase tracking-[0.08em] text-slate-500">
+                  In Consult
+                </p>
+                <p className="mt-1 text-2xl font-semibold text-slate-900">{consultationInProgressCount}</p>
+              </article>
+              <article className="rounded-xl border border-white/70 bg-white/92 p-4 shadow-sm">
+                <p className="text-xs uppercase tracking-[0.08em] text-slate-500">Paid Invoices</p>
+                <p className="mt-1 text-2xl font-semibold text-slate-900">{paidInvoiceCount}</p>
+              </article>
+              <article className="rounded-xl border border-white/70 bg-white/92 p-4 shadow-sm">
+                <p className="text-xs uppercase tracking-[0.08em] text-slate-500">Pending Invoices</p>
+                <p className="mt-1 text-2xl font-semibold text-slate-900">{pendingInvoiceCount}</p>
               </article>
             </div>
 
@@ -1203,6 +1850,9 @@ export default async function ModuleWorkspacePage({
                     </div>
                   ))}
                 </div>
+                <p className="mt-4 text-xs font-semibold text-slate-600">
+                  Collected Revenue (Demo): {formatCurrency(billedRevenue, "INR")}
+                </p>
               </article>
 
               <article className="rounded-2xl border border-white/70 bg-white/92 p-5 shadow-[0_16px_45px_-35px_rgba(15,23,42,0.85)]">
@@ -1250,44 +1900,85 @@ export default async function ModuleWorkspacePage({
                     No appointments found.
                   </p>
                 ) : (
-                  appointments.slice(0, 35).map((item) => (
-                    <div
-                      key={item.id}
-                      className="rounded-xl border border-slate-200 bg-white p-3"
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <p className="text-sm font-semibold text-slate-900">
-                          {resolveName(item.patient_id)} and {resolveName(item.provider_id)}
+                  appointments.slice(0, 35).map((item) => {
+                    const session = sessionByAppointment.get(item.id);
+                    const appointmentInvoices = invoicesByAppointment.get(item.id) ?? [];
+
+                    return (
+                      <div
+                        key={item.id}
+                        className="rounded-xl border border-slate-200 bg-white p-3"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-sm font-semibold text-slate-900">
+                            {resolveName(item.patient_id)} and {resolveName(item.provider_id)}
+                          </p>
+                          <span
+                            className={`inline-flex rounded-md border px-2 py-0.5 text-xs font-semibold ${statusBadgeClass(item.status)}`}
+                          >
+                            {statusLabel(item.status)}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-xs text-slate-600">
+                          {formatDateTime(item.scheduled_at)} | Appointment #{shortId(item.id)}
                         </p>
-                        <span
-                          className={`inline-flex rounded-md border px-2 py-0.5 text-xs font-semibold ${statusBadgeClass(item.status)}`}
-                        >
-                          {statusLabel(item.status)}
-                        </span>
+                        <p className="mt-1 text-sm text-slate-700">
+                          {item.reason ?? "No reason entered"}
+                        </p>
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <span
+                            className={`inline-flex rounded-md border px-2 py-0.5 text-xs font-semibold ${statusBadgeClass(session?.status ?? "scheduled")}`}
+                          >
+                            Consultation {statusLabel(session?.status ?? "scheduled")}
+                          </span>
+                          {session?.updated_at ? (
+                            <span className="text-xs text-slate-500">
+                              Updated {formatDateTime(session.updated_at)}
+                            </span>
+                          ) : null}
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {["ready", "in_consult", "completed", "cancelled"].map((state) => (
+                            <form key={state} action={updateConsultationStatusAction}>
+                              <input type="hidden" name="return_to" value={currentPath} />
+                              <input type="hidden" name="appointment_id" value={item.id} />
+                              <input type="hidden" name="status" value={state} />
+                              <button
+                                type="submit"
+                                className="rounded-md border border-slate-300 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:border-slate-400"
+                              >
+                                Consult {statusLabel(state)}
+                              </button>
+                            </form>
+                          ))}
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {STATUS_ORDER.map((state) => (
+                            <form key={state} action={updateAppointmentStatusAction}>
+                              <input type="hidden" name="return_to" value={currentPath} />
+                              <input type="hidden" name="appointment_id" value={item.id} />
+                              <input type="hidden" name="status" value={state} />
+                              <button
+                                type="submit"
+                                className="rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:border-slate-400"
+                              >
+                                {statusLabel(state)}
+                              </button>
+                            </form>
+                          ))}
+                        </div>
+                        {appointmentInvoices.length > 0 ? (
+                          <div className="mt-2 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-2">
+                            {appointmentInvoices.slice(0, 2).map((invoice) => (
+                              <p key={invoice.id} className="text-xs text-slate-600">
+                                {formatCurrency(invoice.amount, invoice.currency)} | {statusLabel(invoice.status)}
+                              </p>
+                            ))}
+                          </div>
+                        ) : null}
                       </div>
-                      <p className="mt-1 text-xs text-slate-600">
-                        {formatDateTime(item.scheduled_at)} | Appointment #{shortId(item.id)}
-                      </p>
-                      <p className="mt-1 text-sm text-slate-700">
-                        {item.reason ?? "No reason entered"}
-                      </p>
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        {STATUS_ORDER.map((state) => (
-                          <form key={state} action={updateAppointmentStatusAction}>
-                            <input type="hidden" name="return_to" value={currentPath} />
-                            <input type="hidden" name="appointment_id" value={item.id} />
-                            <input type="hidden" name="status" value={state} />
-                            <button
-                              type="submit"
-                              className="rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:border-slate-400"
-                            >
-                              {statusLabel(state)}
-                            </button>
-                          </form>
-                        ))}
-                      </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </article>
@@ -1342,6 +2033,32 @@ export default async function ModuleWorkspacePage({
                           {item.full_name ?? `Provider ${shortId(item.id)}`}
                         </p>
                         <p className="text-xs text-slate-500">ID: {shortId(item.id)}</p>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+              <div className="rounded-2xl border border-white/70 bg-white/92 p-5 shadow-[0_16px_45px_-35px_rgba(15,23,42,0.85)]">
+                <h3 className="text-sm font-semibold uppercase tracking-[0.08em] text-slate-600">
+                  Billing Overview
+                </h3>
+                <div className="mt-3 space-y-2">
+                  {invoices.length === 0 ? (
+                    <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                      No invoices available.
+                    </p>
+                  ) : (
+                    invoices.slice(0, 12).map((invoice) => (
+                      <div key={invoice.id} className="rounded-lg border border-slate-200 bg-white p-2.5">
+                        <p className="text-sm font-semibold text-slate-900">
+                          {formatCurrency(invoice.amount, invoice.currency)}
+                        </p>
+                        <p className="text-xs text-slate-600">
+                          {statusLabel(invoice.status)} | Patient {resolveName(invoice.patient_id)}
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          {invoice.paid_at ? `Paid ${formatDateTime(invoice.paid_at)}` : `Created ${formatDateTime(invoice.created_at)}`}
+                        </p>
                       </div>
                     ))
                   )}

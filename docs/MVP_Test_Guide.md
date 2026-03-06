@@ -1,97 +1,84 @@
-# Telemedicine MVP Test Guide
+# Telemedicine MVP v2 + Clinical Core Test Guide
 
-## 1) Where to test
+## 1) Test Targets
 
-- Local URL: `http://localhost:3000`
-- Main pages:
-  - `/` (project home)
-  - `/workspace`
+- Local: `http://localhost:3000`
+- Production: `https://bac-telemedi.vercel.app`
+- Key routes:
   - `/workspace/patient/booking`
+  - `/workspace/patient/visits`
   - `/workspace/provider/dashboard`
+  - `/workspace/provider/patients`
   - `/workspace/admin/pulse`
-  - `/prototype` (full clickable design journey)
+  - `/workspace/admin/operations`
 
-## 2) How to run
+## 2) Required Setup
 
 1. Open terminal in project root: `C:\Users\Bacancy\bac-telemedi`
 2. Install dependencies:
    - `npm install`
-3. Start app:
-   - Dev: `npm run dev`
-   - Or production mode: `npm run build` then `npm run start`
-4. Open browser:
-   - `http://localhost:3000`
-
-## 3) Environment required
-
-Your `.env.local` must include:
+3. Ensure `.env.local` contains:
 
 ```env
 NEXT_PUBLIC_SUPABASE_URL=...
 NEXT_PUBLIC_SUPABASE_ANON_KEY=...
 ```
 
-Database schema already applied from:
-- `supabase/migrations/0001_mvp_schema.sql`
+4. Run database migrations in Supabase SQL editor:
+   - `supabase/migrations/0001_mvp_schema.sql`
+   - `supabase/migrations/0002_phase_a_clinical_core.sql`
+5. Seed demo users/data:
+   - `node scripts/seed-mvp-data.mjs`
+6. Start app:
+   - `npm run dev`
 
-## 4) Demo credentials (seeded)
+## 3) Demo Credentials
 
-- Patient:
-  - Email: `mvp.patient.1772702607587@gmail.com`
-  - Password: `DemoPass#2026`
-- Provider:
-  - Email: `mvp.provider.1772702607587@gmail.com`
-  - Password: `DemoPass#2026`
-- Admin:
-  - Email: `mvp.admin.1772702607587@gmail.com`
-  - Password: `DemoPass#2026`
+Use the latest credentials printed by `scripts/seed-mvp-data.mjs`.
 
-## 5) Persona-wise test checklist
+## 4) Persona Flow Checklist
 
-### Patient flow
+### Patient
 
-1. Sign in as patient.
-2. Open `/workspace/patient/booking`.
-3. Verify provider dropdown is populated.
-4. Book appointment with date/time + reason.
-5. Verify success message and upcoming appointments list.
+1. Book appointment in `/workspace/patient/booking`.
+2. Go to `/workspace/patient/visits`.
+3. Click `Check In For Visit` on booked visit.
+4. Verify invoice appears and `Pay Now (Demo)` works.
+5. Verify prescriptions/care orders are visible.
 
-Expected:
-- Appointment is created in Supabase.
-- Appointment visible to same patient.
+### Provider
 
-### Provider flow
+1. Open `/workspace/provider/dashboard`.
+2. Move consultation state: `ready -> in_consult -> completed`.
+3. Open `/workspace/provider/patients`.
+4. Save SOAP note draft, issue prescription, create care order.
+5. Click `Sign Note & Complete Visit`.
 
-1. Sign in as provider.
-2. Open `/workspace/provider/dashboard`.
-3. Verify queue cards are visible.
-4. Update status using action buttons:
-   - `in_progress`
-   - `completed`
-   - `cancelled`
+### Admin
 
-Expected:
-- Status updates persist.
-- Provider can update only own assigned appointments.
+1. Open `/workspace/admin/pulse`.
+2. Verify metrics include consultation and billing signals.
+3. Open `/workspace/admin/operations`.
+4. Verify appointment, consultation, and invoice views update.
+5. Validate audit stream in `/workspace/admin/audit`.
 
-### Admin flow
+## 5) Automated QA Smoke
 
-1. Sign in as admin.
-2. Open `/workspace/admin/pulse`.
-3. Verify live metrics:
-   - Active sessions
-   - Total providers/patients
-   - Appointment status distribution
+Optional authenticated smoke run:
 
-Expected:
-- Admin sees aggregate operational data.
+```powershell
+$env:MVP_QA_PATIENT_EMAIL="..."
+$env:MVP_QA_PROVIDER_EMAIL="..."
+$env:MVP_QA_ADMIN_EMAIL="..."
+$env:MVP_QA_PASSWORD="..."
+npm run qa:smoke
+```
 
 ## 6) Troubleshooting
 
-- `Email not confirmed` while testing:
-  - In Supabase Auth settings, disable email confirmation for MVP demo.
-- If role access redirects unexpectedly:
-  - Confirm profile role in `public.profiles` table.
-- If no booking data appears:
-  - Verify migration executed and RLS policies are present.
-
+- If you see errors like `Could not find the table 'public.consultation_sessions'`:
+  - Run `0002_phase_a_clinical_core.sql` migration.
+- If sign-in fails with confirmation issue:
+  - Disable confirm-email in Supabase Auth during demo.
+- If role routing is wrong:
+  - Check user role in `public.profiles`.

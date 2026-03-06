@@ -1,72 +1,77 @@
-# Telemedicine Product Roadmap: Remaining 4 Phases
+# Telemedicine Product Roadmap and Sprint Plan
+
+## Current status snapshot (March 6, 2026)
+
+| Phase | Status in this build | Notes |
+|---|---|---|
+| Phase A: Clinical Core | Implemented baseline | Consultation lifecycle, SOAP notes, care orders, Rx issuing, note signing |
+| Phase B: Commerce and Engagement | Foundation implemented | Billing invoice model + payment simulation UI in patient/admin flows |
+| Phase C: Admin and Compliance Hardening | Partially implemented | Expanded audit visibility and admin operational controls |
+| Phase D: Production Readiness | In progress | Lint/build gates, smoke script, customer docs updated |
 
 ## Planning assumptions
 
 - Sprint length: 2 weeks
-- Team model: 1 full-stack engineer, 1 frontend engineer, 1 QA engineer (or equivalent shared capacity)
-- Priority order: clinical reliability first, then monetization, then compliance hardening, then scale-readiness
+- Team model: 1 full-stack engineer, 1 frontend engineer, 1 QA engineer
+- Priority order: clinical reliability -> monetization -> compliance -> scale
 
-## Phase A: Clinical Core (Post-MVP)
+## Phase A: Clinical Core (Delivered baseline)
 
-Goal: Convert MVP into a complete consultation workflow for daily clinical operations.
+Goal: Full consultation workflow for day-to-day clinical execution.
 
-| Sprint | Objective | Scope (major items) | Deliverables | Exit criteria |
+| Sprint | Objective | Scope | Deliverables | Exit criteria |
 |---|---|---|---|---|
-| A1 | Real-time consultation base | Session lifecycle, waiting room readiness, consult state machine | Consultation service + session state UI | End-to-end consult flow works in staging |
-| A2 | Clinical documentation | SOAP notes, encounter timeline, provider chart panel | Notes module with save/lock workflow | Provider can complete and sign consultation note |
-| A3 | Prescription and orders | Rx drafting, issue flow, order templates, patient view | Prescription + orders end-to-end | Patient receives provider-issued Rx/plan in app |
+| A1 | Consultation lifecycle | Session state machine (`scheduled` -> `checked_in` -> `ready` -> `in_consult` -> `completed`) | Consultation dashboard controls | Provider can run end-to-end consultation lifecycle |
+| A2 | Clinical documentation | SOAP notes save/sign, encounter timeline | `encounter_notes` workflow in provider panel | Signed notes lock completed consultation |
+| A3 | Orders and prescriptions | Prescription issue + care orders | Rx + care order creation and patient visibility | Patient receives provider-issued plan in app |
 
 ## Phase B: Commerce and Engagement
 
-Goal: Add business transaction layer and patient engagement workflows.
+Goal: Add monetization and engagement workflows.
 
-| Sprint | Objective | Scope (major items) | Deliverables | Exit criteria |
+| Sprint | Objective | Scope | Deliverables | Exit criteria |
 |---|---|---|---|---|
-| B1 | Payments foundation | Payment intent, checkout validation, invoice record | Payment module integrated with appointments | Successful paid booking and transaction record |
-| B2 | Claims and settlement | Claim packet generation, provider settlement queue | Claims + settlement dashboards | Admin can process claim lifecycle states |
-| B3 | Engagement automation | Reminder notifications, follow-up campaigns, refill nudges | Notification engine with templates | Configured reminders trigger on schedule |
+| B1 | Payments foundation | Invoice model, payment simulation, admin billing view | `billing_invoices` table + patient/admin UI | Paid/pending lifecycle verified in demo |
+| B2 | Claims and settlement | Claim packet and settlement queue | Claims module and status model | Admin can process claim status pipeline |
+| B3 | Engagement automation | Reminder and follow-up automation | Notification service with templates | Scheduled reminders trigger reliably |
 
 ## Phase C: Admin and Compliance Hardening
 
-Goal: Strengthen governance, auditability, and operational controls.
+Goal: Strengthen governance and operational controls.
 
-| Sprint | Objective | Scope (major items) | Deliverables | Exit criteria |
+| Sprint | Objective | Scope | Deliverables | Exit criteria |
 |---|---|---|---|---|
-| C1 | Compliance controls | PHI access monitoring, policy checks, exception handling | Compliance dashboard and violation queue | High-risk access events become traceable |
-| C2 | Incident response | Security playbooks, incident timeline, escalation actions | Incident response workspace | Team can execute mock incident within SLA |
-| C3 | Access governance | Fine-grained permissions, privileged action logs | Role/permission policy matrix in system | Permission audit passes internal review |
+| C1 | Compliance controls | PHI access monitoring and exception queues | Compliance dashboard | High-risk access becomes traceable |
+| C2 | Incident response | Security timeline and escalation workflows | Incident workspace + runbooks | Mock incident run completed under SLA |
+| C3 | Access governance | Permission matrix and privileged action controls | Policy management UI + logs | Internal permission audit passes |
 
 ## Phase D: Production Readiness and Launch
 
-Goal: Make platform launch-ready for external users and predictable operations.
+Goal: Achieve launch-grade reliability and operational readiness.
 
-| Sprint | Objective | Scope (major items) | Deliverables | Exit criteria |
+| Sprint | Objective | Scope | Deliverables | Exit criteria |
 |---|---|---|---|---|
-| D1 | Quality and regression | E2E test automation, core contract tests, QA packs | Automated test suite in CI | Critical journey pass rate >95% |
-| D2 | Performance and reliability | Load testing, query/index tuning, caching strategy | Performance report + tuning changes | Target latency and throughput achieved |
-| D3 | Observability and release | Monitoring dashboards, alerts, backup/restore, runbooks, release checklist | Production runbook and go-live checklist | Go-live readiness sign-off completed |
+| D1 | Quality and regression | Authenticated smoke automation + regression packs | QA scripts and CI gates | Critical journey pass rate >95% |
+| D2 | Performance and reliability | Query/index tuning, load profile, caching strategy | Performance benchmark report | Target latency and throughput met |
+| D3 | Observability and release | Dashboards, alerts, backup/restore, release checklists | Production runbook and launch checklist | Go-live sign-off complete |
 
-## Cross-phase governance cadence
+## Governance cadence
 
-- Weekly:
-  - Sprint health, blockers, scope drift review
-- Bi-weekly:
-  - Stakeholder demo and acceptance walkthrough
-- Monthly:
-  - KPI review: conversion, consultation completion, provider productivity, SLA metrics
+- Weekly: sprint health and blockers
+- Bi-weekly: stakeholder demo and acceptance
+- Monthly: KPI review (conversion, consultation completion, provider productivity, SLA)
 
-## Risk register (high-level)
+## Major risks and mitigation
 
 | Risk | Impact | Mitigation |
 |---|---|---|
-| Video reliability variance across networks/devices | Consultation drop-offs | Progressive reconnection strategy + fallback policies |
-| Evolving compliance requirements | Rework and delay | Policy-as-code approach and regular compliance checkpoints |
-| Payment/claims integration complexity | Delay in monetization features | Isolate adapters and deliver staged gateways |
-| Scope expansion during active sprints | Quality drop and slippage | Strict sprint boundaries and change-control gate |
+| Network/media reliability variance | Consultation drop-offs | Reconnection + fallback strategy |
+| Compliance requirement changes | Rework and delay | Policy-as-code + compliance checkpoints |
+| Payment/claims complexity | Delayed monetization | Adapter-based staged integrations |
+| Scope creep | Delivery slippage | Strict sprint gate and change control |
 
 ## Release recommendation
 
-- Release after each phase to staging with customer demo
-- Production milestone after Phase D exit criteria are met
-- Keep MVP stable branch while building phase features in controlled increments
-
+- Keep a stable demo branch and phase-delivery branch strategy
+- Release each phase to staging with acceptance demos
+- Promote to production after Phase D exit criteria are complete
