@@ -1,4 +1,4 @@
-# Telemedicine MVP v2 + Clinical Core Test Guide
+# Telemedicine Enterprise Test Guide
 
 ## 1) Test Targets
 
@@ -44,7 +44,7 @@ Use the latest credentials printed by `scripts/seed-mvp-data.mjs`.
 1. Book appointment in `/workspace/patient/booking`.
 2. Go to `/workspace/patient/visits`.
 3. Click `Check In For Visit` on booked visit.
-4. Verify invoice appears and `Pay Now (Demo)` works.
+4. Verify invoice appears and `Pay Now` works with payment method selection.
 5. Verify prescriptions/care orders are visible.
 
 ### Provider

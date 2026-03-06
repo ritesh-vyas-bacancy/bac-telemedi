@@ -7,10 +7,12 @@ import {
   createComplianceEventAction,
   createCareOrderAction,
   createIncidentReportAction,
+  dispatchDueNotificationsAction,
   issuePrescriptionAction,
   markNotificationReadAction,
   markInvoicePaidAction,
   patientCheckInAction,
+  retryNotificationAction,
   saveEncounterNoteAction,
   sendNotificationAction,
   submitClaimAction,
@@ -148,6 +150,7 @@ type InvoiceRow = {
   currency: string;
   status: string;
   paid_at: string | null;
+  gateway_reference: string | null;
   created_at: string;
 };
 
@@ -394,6 +397,13 @@ function shortId(value: string) {
   return value.slice(0, 8);
 }
 
+function metadataString(metadata: Record<string, unknown>, key: string) {
+  const raw = metadata[key];
+  if (typeof raw !== "string") return null;
+  const text = raw.trim();
+  return text.length > 0 ? text : null;
+}
+
 function scoreWidth(value: number, total: number) {
   if (total <= 0) return 0;
   return Math.max(6, Math.round((value / total) * 100));
@@ -517,7 +527,7 @@ export default async function ModuleWorkspacePage({
           .limit(80),
         supabase
           .from("billing_invoices")
-          .select("id,appointment_id,patient_id,provider_id,amount,currency,status,paid_at,created_at")
+          .select("id,appointment_id,patient_id,provider_id,amount,currency,status,paid_at,gateway_reference,created_at")
           .eq("patient_id", user.id)
           .order("created_at", { ascending: false })
           .limit(80),
@@ -593,7 +603,7 @@ export default async function ModuleWorkspacePage({
           .limit(120),
         supabase
           .from("billing_invoices")
-          .select("id,appointment_id,patient_id,provider_id,amount,currency,status,paid_at,created_at")
+          .select("id,appointment_id,patient_id,provider_id,amount,currency,status,paid_at,gateway_reference,created_at")
           .eq("provider_id", user.id)
           .order("created_at", { ascending: false })
           .limit(80),
@@ -754,7 +764,7 @@ export default async function ModuleWorkspacePage({
           .limit(160),
         supabase
           .from("billing_invoices")
-          .select("id,appointment_id,patient_id,provider_id,amount,currency,status,paid_at,created_at")
+          .select("id,appointment_id,patient_id,provider_id,amount,currency,status,paid_at,gateway_reference,created_at")
           .order("created_at", { ascending: false })
           .limit(160),
         supabase
@@ -830,7 +840,7 @@ export default async function ModuleWorkspacePage({
           .limit(160),
         supabase
           .from("billing_invoices")
-          .select("id,appointment_id,patient_id,provider_id,amount,currency,status,paid_at,created_at")
+          .select("id,appointment_id,patient_id,provider_id,amount,currency,status,paid_at,gateway_reference,created_at")
           .order("created_at", { ascending: false })
           .limit(160),
         supabase
@@ -915,8 +925,8 @@ export default async function ModuleWorkspacePage({
       loweredError.includes("incident_reports") ||
       loweredError.includes("role_permissions");
     migrationWarning = phaseBTableMentioned
-      ? "Advanced operations modules are ready in code. Run supabase/migrations/0003_phase_bcd_foundations.sql to enable claims, notifications, compliance, incidents, and permissions."
-      : "Advanced clinical and billing modules are ready in code. Run supabase/migrations/0002_phase_a_clinical_core.sql to enable them.";
+      ? "Operations tables are missing. Run supabase/migrations/0003_phase_bcd_foundations.sql to enable claims, notifications, compliance, incidents, and permissions."
+      : "Clinical/billing tables are missing. Run supabase/migrations/0002_phase_a_clinical_core.sql to enable complete care workflows.";
     dbError = "";
   }
 
@@ -1244,7 +1254,7 @@ export default async function ModuleWorkspacePage({
                 </label>
                 <label className="grid gap-1">
                   <span className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-600">
-                    Consultation Fee (Demo)
+                    Consultation Fee
                   </span>
                   <input
                     type="number"
@@ -1428,17 +1438,38 @@ export default async function ModuleWorkspacePage({
                                     <form action={markInvoicePaidAction}>
                                       <input type="hidden" name="return_to" value={currentPath} />
                                       <input type="hidden" name="invoice_id" value={invoice.id} />
+                                      <div className="flex flex-wrap items-center gap-1.5">
+                                        <select
+                                          name="payment_method"
+                                          defaultValue="upi"
+                                          className="rounded-md border border-slate-300 bg-white px-2 py-0.5 text-[11px] text-slate-800"
+                                        >
+                                          <option value="upi">UPI</option>
+                                          <option value="card">Card</option>
+                                          <option value="netbanking">Net Banking</option>
+                                          <option value="wallet">Wallet</option>
+                                          <option value="bank_transfer">Bank Transfer</option>
+                                          <option value="insurance">Insurance</option>
+                                        </select>
+                                        <input
+                                          type="text"
+                                          name="payment_reference"
+                                          placeholder="Optional txn ref"
+                                          className="rounded-md border border-slate-300 bg-white px-2 py-0.5 text-[11px] text-slate-700"
+                                        />
+                                      </div>
                                       <button
                                         type="submit"
                                         className="rounded-md border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-800"
                                       >
-                                        Pay Now (Demo)
+                                        Pay Now
                                       </button>
                                     </form>
                                   ) : (
-                                    <span className="text-[11px] text-slate-500">
-                                      Paid at {invoice.paid_at ? formatDateTime(invoice.paid_at) : "N/A"}
-                                    </span>
+                                    <div className="space-y-0.5 text-[11px] text-slate-500">
+                                      <p>Paid at {invoice.paid_at ? formatDateTime(invoice.paid_at) : "N/A"}</p>
+                                      {invoice.gateway_reference ? <p>Ref: {invoice.gateway_reference}</p> : null}
+                                    </div>
                                   )}
                                 </div>
                               </div>
@@ -1546,6 +1577,11 @@ export default async function ModuleWorkspacePage({
                 ) : (
                   notifications.slice(0, 24).map((item) => (
                     <div key={item.id} className="rounded-lg border border-slate-200 bg-white p-3">
+                      {(() => {
+                        const destination = metadataString(item.metadata, "destination");
+                        const failureReason = metadataString(item.metadata, "failure_reason");
+                        return (
+                          <>
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <p className="text-sm font-semibold text-slate-900">{item.title}</p>
                         <span
@@ -1559,6 +1595,12 @@ export default async function ModuleWorkspacePage({
                         Channel: {statusLabel(item.channel)} |{" "}
                         {item.sent_at ? `Sent ${formatDateTime(item.sent_at)}` : `Created ${formatDateTime(item.created_at)}`}
                       </p>
+                      {destination ? (
+                        <p className="mt-1 text-[11px] text-slate-500">Destination: {destination}</p>
+                      ) : null}
+                      {failureReason ? (
+                        <p className="mt-1 text-[11px] text-rose-600">Delivery issue: {failureReason}</p>
+                      ) : null}
                       {item.appointment_id ? (
                         <p className="mt-1 text-[11px] text-slate-500">
                           Appointment #{shortId(item.appointment_id)}
@@ -1576,6 +1618,9 @@ export default async function ModuleWorkspacePage({
                           </button>
                         </form>
                       ) : null}
+                          </>
+                        );
+                      })()}
                     </div>
                   ))
                 )}
@@ -1584,7 +1629,7 @@ export default async function ModuleWorkspacePage({
             <article className="rounded-2xl border border-white/70 bg-white/92 p-5 shadow-[0_16px_45px_-35px_rgba(15,23,42,0.85)]">
               <h2 className="text-lg font-semibold text-slate-900">Care Communication Thread</h2>
               <p className="mt-1 text-sm text-slate-600">
-                Read-only MVP stream of provider-patient communication from your records.
+                Unified communication timeline from provider and operations teams.
               </p>
               <div className="mt-4 space-y-3">
                 {messages.length === 0 ? (
@@ -1741,6 +1786,7 @@ export default async function ModuleWorkspacePage({
                                 <p key={invoice.id} className="text-xs text-slate-600">
                                   Billing: {formatCurrency(invoice.amount, invoice.currency)} |{" "}
                                   {statusLabel(invoice.status)}
+                                  {invoice.gateway_reference ? ` | Ref ${invoice.gateway_reference}` : ""}
                                 </p>
                               ))}
                             </div>
@@ -1810,6 +1856,21 @@ export default async function ModuleWorkspacePage({
                       <option value="whatsapp">WhatsApp</option>
                     </select>
                     <input
+                      name="destination"
+                      placeholder="Destination (email / phone), optional for in-app"
+                      className="rounded-md border border-slate-300 bg-white px-2.5 py-2 text-xs text-slate-800"
+                    />
+                    <label className="grid gap-1">
+                      <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-600">
+                        Schedule (optional)
+                      </span>
+                      <input
+                        type="datetime-local"
+                        name="scheduled_for"
+                        className="rounded-md border border-slate-300 bg-white px-2.5 py-2 text-xs text-slate-800"
+                      />
+                    </label>
+                    <input
                       name="title"
                       placeholder="Notification title"
                       required
@@ -1829,6 +1890,15 @@ export default async function ModuleWorkspacePage({
                       Send
                     </button>
                   </form>
+                  <form action={dispatchDueNotificationsAction} className="mt-2">
+                    <input type="hidden" name="return_to" value={currentPath} />
+                    <button
+                      type="submit"
+                      className="rounded-md border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-800"
+                    >
+                      Dispatch Queued Notifications
+                    </button>
+                  </form>
                 </div>
                 <div className="rounded-2xl border border-white/70 bg-white/92 p-5 shadow-[0_16px_45px_-35px_rgba(15,23,42,0.85)]">
                   <h3 className="text-sm font-semibold uppercase tracking-[0.08em] text-slate-600">
@@ -1842,6 +1912,11 @@ export default async function ModuleWorkspacePage({
                     ) : (
                       notifications.slice(0, 12).map((item) => (
                         <div key={item.id} className="rounded-lg border border-slate-200 bg-white p-2.5">
+                          {(() => {
+                            const destination = metadataString(item.metadata, "destination");
+                            const failureReason = metadataString(item.metadata, "failure_reason");
+                            return (
+                              <>
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <p className="text-sm font-semibold text-slate-900">{item.title}</p>
                             <span
@@ -1852,9 +1927,30 @@ export default async function ModuleWorkspacePage({
                           </div>
                           <p className="text-xs text-slate-600">{item.message}</p>
                           <p className="text-[11px] text-slate-500">
-                            {item.sender_id === user.id ? "Sent by you" : "Received"} |{" "}
+                            {item.sender_id === user.id ? "Sent by you" : "Received"} | {statusLabel(item.channel)} |{" "}
                             {formatDateTime(item.created_at)}
                           </p>
+                          {destination ? (
+                            <p className="text-[11px] text-slate-500">Destination: {destination}</p>
+                          ) : null}
+                          {failureReason ? (
+                            <p className="text-[11px] text-rose-600">Delivery issue: {failureReason}</p>
+                          ) : null}
+                          {(item.status === "queued" || item.status === "failed") && item.sender_id === user.id ? (
+                            <form action={retryNotificationAction} className="mt-1">
+                              <input type="hidden" name="return_to" value={currentPath} />
+                              <input type="hidden" name="notification_id" value={item.id} />
+                              <button
+                                type="submit"
+                                className="rounded-md border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800"
+                              >
+                                Retry Delivery
+                              </button>
+                            </form>
+                          ) : null}
+                              </>
+                            );
+                          })()}
                         </div>
                       ))
                     )}
@@ -2330,7 +2426,7 @@ export default async function ModuleWorkspacePage({
                   ))}
                 </div>
                 <p className="mt-4 text-xs font-semibold text-slate-600">
-                  Collected Revenue (Demo): {formatCurrency(billedRevenue, "INR")}
+                  Collected Revenue: {formatCurrency(billedRevenue, "INR")}
                 </p>
               </article>
 
@@ -2457,6 +2553,7 @@ export default async function ModuleWorkspacePage({
                             {appointmentInvoices.slice(0, 2).map((invoice) => (
                               <p key={invoice.id} className="text-xs text-slate-600">
                                 {formatCurrency(invoice.amount, invoice.currency)} | {statusLabel(invoice.status)}
+                                {invoice.gateway_reference ? ` | Ref ${invoice.gateway_reference}` : ""}
                               </p>
                             ))}
                           </div>
@@ -2543,6 +2640,7 @@ export default async function ModuleWorkspacePage({
                         </p>
                         <p className="text-xs text-slate-500">
                           {invoice.paid_at ? `Paid ${formatDateTime(invoice.paid_at)}` : `Created ${formatDateTime(invoice.created_at)}`}
+                          {invoice.gateway_reference ? ` | Ref ${invoice.gateway_reference}` : ""}
                         </p>
                       </div>
                     ))
@@ -2594,6 +2692,22 @@ export default async function ModuleWorkspacePage({
                             Update
                           </button>
                         </form>
+                        <form action={updateClaimStatusAction} className="mt-1 flex gap-1.5">
+                          <input type="hidden" name="return_to" value={currentPath} />
+                          <input type="hidden" name="claim_id" value={claim.id} />
+                          <input type="hidden" name="status" value={claim.status} />
+                          <input
+                            name="review_notes"
+                            placeholder="Review notes"
+                            className="w-full rounded-md border border-slate-300 bg-white px-2 py-0.5 text-[11px] text-slate-700"
+                          />
+                          <button
+                            type="submit"
+                            className="rounded-md border border-indigo-300 bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-800"
+                          >
+                            Save Notes
+                          </button>
+                        </form>
                       </div>
                     ))
                   )}
@@ -2636,6 +2750,28 @@ export default async function ModuleWorkspacePage({
                     required
                     className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-800"
                   />
+                  <select
+                    name="severity"
+                    defaultValue="medium"
+                    className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-800"
+                  >
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                    <option value="critical">Critical</option>
+                  </select>
+                  <select
+                    name="assigned_to"
+                    defaultValue=""
+                    className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-800"
+                  >
+                    <option value="">Assign later</option>
+                    {providers.slice(0, 30).map((provider) => (
+                      <option key={provider.id} value={provider.id}>
+                        {resolveName(provider.id)}
+                      </option>
+                    ))}
+                  </select>
                   <textarea
                     name="description"
                     rows={2}
@@ -2675,25 +2811,50 @@ export default async function ModuleWorkspacePage({
                       <p className="text-xs font-semibold text-slate-900">
                         {incident.title} ({statusLabel(incident.status)})
                       </p>
-                      <form action={updateIncidentReportAction} className="mt-1 flex gap-1.5">
+                      <p className="text-[11px] text-slate-500">
+                        Severity: {statusLabel(incident.severity)} | Assigned:{" "}
+                        {incident.assigned_to ? resolveName(incident.assigned_to) : "Unassigned"}
+                      </p>
+                      <form action={updateIncidentReportAction} className="mt-1 grid gap-1.5">
                         <input type="hidden" name="return_to" value={currentPath} />
                         <input type="hidden" name="incident_id" value={incident.id} />
-                        <select
-                          name="status"
-                          defaultValue={incident.status}
-                          className="rounded-md border border-slate-300 bg-white px-2 py-0.5 text-[11px] text-slate-800"
-                        >
-                          <option value="open">Open</option>
-                          <option value="in_progress">In Progress</option>
-                          <option value="resolved">Resolved</option>
-                          <option value="closed">Closed</option>
-                        </select>
-                        <button
-                          type="submit"
-                          className="rounded-md border border-slate-300 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-700"
-                        >
-                          Update
-                        </button>
+                        <div className="flex gap-1.5">
+                          <select
+                            name="status"
+                            defaultValue={incident.status}
+                            className="rounded-md border border-slate-300 bg-white px-2 py-0.5 text-[11px] text-slate-800"
+                          >
+                            <option value="open">Open</option>
+                            <option value="in_progress">In Progress</option>
+                            <option value="resolved">Resolved</option>
+                            <option value="closed">Closed</option>
+                          </select>
+                          <select
+                            name="assigned_to"
+                            defaultValue={incident.assigned_to ?? ""}
+                            className="rounded-md border border-slate-300 bg-white px-2 py-0.5 text-[11px] text-slate-800"
+                          >
+                            <option value="">Unassigned</option>
+                            {providers.slice(0, 30).map((provider) => (
+                              <option key={provider.id} value={provider.id}>
+                                {resolveName(provider.id)}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="flex gap-1.5">
+                          <input
+                            name="resolution_notes"
+                            placeholder="Resolution notes"
+                            className="w-full rounded-md border border-slate-300 bg-white px-2 py-0.5 text-[11px] text-slate-700"
+                          />
+                          <button
+                            type="submit"
+                            className="rounded-md border border-slate-300 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-700"
+                          >
+                            Update
+                          </button>
+                        </div>
                       </form>
                     </div>
                   ))}
@@ -2703,6 +2864,15 @@ export default async function ModuleWorkspacePage({
                 <h3 className="text-sm font-semibold uppercase tracking-[0.08em] text-slate-600">
                   Permissions and Notifications
                 </h3>
+                <form action={dispatchDueNotificationsAction} className="mt-3">
+                  <input type="hidden" name="return_to" value={currentPath} />
+                  <button
+                    type="submit"
+                    className="rounded-md border border-indigo-300 bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-800"
+                  >
+                    Dispatch Queued Notifications
+                  </button>
+                </form>
                 <form action={upsertRolePermissionAction} className="mt-3 grid gap-2">
                   <input type="hidden" name="return_to" value={currentPath} />
                   <select
@@ -2738,10 +2908,32 @@ export default async function ModuleWorkspacePage({
                 <div className="mt-3 space-y-1.5">
                   {notifications.slice(0, 4).map((item) => (
                     <div key={item.id} className="rounded-md border border-slate-200 bg-white p-2">
+                      {(() => {
+                        const failureReason = metadataString(item.metadata, "failure_reason");
+                        return (
+                          <>
                       <p className="text-xs font-semibold text-slate-900">{item.title}</p>
                       <p className="text-[11px] text-slate-500">
-                        To {resolveName(item.recipient_id)} | {statusLabel(item.status)}
+                        To {resolveName(item.recipient_id)} | {statusLabel(item.status)} | {statusLabel(item.channel)}
                       </p>
+                      {failureReason ? (
+                        <p className="text-[11px] text-rose-600">Delivery issue: {failureReason}</p>
+                      ) : null}
+                      {item.status === "queued" || item.status === "failed" ? (
+                        <form action={retryNotificationAction} className="mt-1">
+                          <input type="hidden" name="return_to" value={currentPath} />
+                          <input type="hidden" name="notification_id" value={item.id} />
+                          <button
+                            type="submit"
+                            className="rounded-md border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800"
+                          >
+                            Retry
+                          </button>
+                        </form>
+                      ) : null}
+                          </>
+                        );
+                      })()}
                     </div>
                   ))}
                 </div>

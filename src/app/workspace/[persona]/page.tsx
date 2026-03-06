@@ -22,7 +22,7 @@ export default async function PersonaWorkspacePage({ params }: PageProps) {
             {config.label}
           </span>
           <h1 className="mt-3 text-3xl font-bold text-slate-900">{config.label} Workspace</h1>
-          <p className="mt-1 text-sm text-slate-600">Open modules below to continue the functional MVP flow.</p>
+          <p className="mt-1 text-sm text-slate-600">Open modules below to continue full enterprise workflow execution.</p>
         </section>
 
         <section className="mt-5 grid gap-4 md:grid-cols-3">

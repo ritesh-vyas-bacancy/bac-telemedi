@@ -36,6 +36,16 @@ type IncidentSeverity = (typeof INCIDENT_SEVERITY)[number];
 const INCIDENT_STATUS = ["open", "in_progress", "resolved", "closed"] as const;
 type IncidentStatus = (typeof INCIDENT_STATUS)[number];
 
+const PAYMENT_METHOD = ["card", "upi", "netbanking", "wallet", "insurance", "bank_transfer"] as const;
+type PaymentMethod = (typeof PAYMENT_METHOD)[number];
+
+type NotificationDispatchResult = {
+  status: "queued" | "sent" | "failed";
+  sentAt: string | null;
+  providerReference: string | null;
+  failureReason: string | null;
+};
+
 function isAppointmentStatus(value: string): value is AppointmentStatus {
   return APPOINTMENT_STATUS.includes(value as AppointmentStatus);
 }
@@ -68,6 +78,10 @@ function isIncidentStatus(value: string): value is IncidentStatus {
   return INCIDENT_STATUS.includes(value as IncidentStatus);
 }
 
+function isPaymentMethod(value: string): value is PaymentMethod {
+  return PAYMENT_METHOD.includes(value as PaymentMethod);
+}
+
 function safePath(path: string | null) {
   if (!path || !path.startsWith("/")) return "/workspace";
   return path;
@@ -90,11 +104,185 @@ function safeText(value: FormDataEntryValue | null) {
   return text.length > 0 ? text : null;
 }
 
+function safeDate(value: string | null) {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toISOString();
+}
+
+function paymentGatewayReference(method: PaymentMethod) {
+  const seed = Math.random().toString(36).slice(2, 10).toUpperCase();
+  return `${method.toUpperCase()}_${Date.now()}_${seed}`;
+}
+
 function appointmentStatusFromConsultation(nextStatus: ConsultationStatus): AppointmentStatus {
   if (nextStatus === "in_consult") return "in_progress";
   if (nextStatus === "completed") return "completed";
   if (nextStatus === "cancelled") return "cancelled";
   return "booked";
+}
+
+async function dispatchNotificationChannel(
+  channel: NotificationChannel,
+  title: string,
+  message: string,
+  destination: string | null,
+): Promise<NotificationDispatchResult> {
+  const nowIso = new Date().toISOString();
+
+  if (channel === "in_app") {
+    return {
+      status: "sent",
+      sentAt: nowIso,
+      providerReference: null,
+      failureReason: null,
+    };
+  }
+
+  if (!destination) {
+    return {
+      status: "queued",
+      sentAt: null,
+      providerReference: null,
+      failureReason: "No destination configured for selected channel.",
+    };
+  }
+
+  if (channel === "email") {
+    const resendApiKey = process.env.RESEND_API_KEY;
+    const fromEmail = process.env.NOTIFY_FROM_EMAIL;
+    if (!resendApiKey || !fromEmail) {
+      return {
+        status: "queued",
+        sentAt: null,
+        providerReference: null,
+        failureReason: "Email provider credentials are not configured.",
+      };
+    }
+
+    try {
+      const response = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${resendApiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          from: fromEmail,
+          to: [destination],
+          subject: title,
+          text: message,
+        }),
+      });
+
+      const payload = (await response.json().catch(() => ({}))) as {
+        id?: string;
+        message?: string;
+        error?: string;
+      };
+
+      if (!response.ok) {
+        return {
+          status: "failed",
+          sentAt: null,
+          providerReference: payload.id ?? null,
+          failureReason: payload.message ?? payload.error ?? "Email provider rejected the request.",
+        };
+      }
+
+      return {
+        status: "sent",
+        sentAt: nowIso,
+        providerReference: payload.id ?? null,
+        failureReason: null,
+      };
+    } catch (error) {
+      return {
+        status: "failed",
+        sentAt: null,
+        providerReference: null,
+        failureReason: String(error),
+      };
+    }
+  }
+
+  const twilioSid = process.env.TWILIO_ACCOUNT_SID;
+  const twilioToken = process.env.TWILIO_AUTH_TOKEN;
+  const twilioFromSms = process.env.TWILIO_FROM_SMS;
+  const twilioFromWhatsapp = process.env.TWILIO_FROM_WHATSAPP;
+
+  if (!twilioSid || !twilioToken) {
+    return {
+      status: "queued",
+      sentAt: null,
+      providerReference: null,
+      failureReason: "Twilio credentials are not configured.",
+    };
+  }
+
+  const from = channel === "whatsapp" ? twilioFromWhatsapp : twilioFromSms;
+  if (!from) {
+    return {
+      status: "queued",
+      sentAt: null,
+      providerReference: null,
+      failureReason: `${channel.toUpperCase()} sender id is not configured.`,
+    };
+  }
+
+  const toValue = channel === "whatsapp" && !destination.startsWith("whatsapp:")
+    ? `whatsapp:${destination}`
+    : destination;
+  const fromValue = channel === "whatsapp" && !from.startsWith("whatsapp:")
+    ? `whatsapp:${from}`
+    : from;
+
+  try {
+    const body = new URLSearchParams({
+      To: toValue,
+      From: fromValue,
+      Body: `${title}\n\n${message}`,
+    });
+    const authToken = Buffer.from(`${twilioSid}:${twilioToken}`).toString("base64");
+
+    const response = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Messages.json`, {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${authToken}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body,
+    });
+
+    const payload = (await response.json().catch(() => ({}))) as {
+      sid?: string;
+      message?: string;
+    };
+
+    if (!response.ok) {
+      return {
+        status: "failed",
+        sentAt: null,
+        providerReference: payload.sid ?? null,
+        failureReason: payload.message ?? "Telecom provider rejected the request.",
+      };
+    }
+
+    return {
+      status: "sent",
+      sentAt: nowIso,
+      providerReference: payload.sid ?? null,
+      failureReason: null,
+    };
+  } catch (error) {
+    return {
+      status: "failed",
+      sentAt: null,
+      providerReference: null,
+      failureReason: String(error),
+    };
+  }
 }
 
 async function getScopedAppointment(
@@ -674,16 +862,21 @@ export async function createCareOrderAction(formData: FormData) {
 export async function markInvoicePaidAction(formData: FormData) {
   const returnTo = safePath(String(formData.get("return_to") ?? "/workspace/patient/visits"));
   const invoiceId = String(formData.get("invoice_id") ?? "");
+  const paymentMethodRaw = String(formData.get("payment_method") ?? "card");
+  const paymentReference = safeText(formData.get("payment_reference"));
 
   if (!invoiceId) {
     redirect(`${returnTo}?error=${encodeURIComponent("Invoice id is required.")}`);
+  }
+  if (!isPaymentMethod(paymentMethodRaw)) {
+    redirect(`${returnTo}?error=${encodeURIComponent("Invalid payment method.")}`);
   }
 
   const { supabase, user, profile } = await requireProfile(returnTo);
 
   const { data: invoice, error: invoiceError } = await supabase
     .from("billing_invoices")
-    .select("id,patient_id,status")
+    .select("id,appointment_id,patient_id,provider_id,status,gateway_reference")
     .eq("id", invoiceId)
     .single();
 
@@ -694,20 +887,37 @@ export async function markInvoicePaidAction(formData: FormData) {
   if (profile.role !== "admin" && invoice.patient_id !== user.id) {
     redirect(`${returnTo}?error=${encodeURIComponent("You cannot update this invoice.")}`);
   }
+  if (invoice.status === "paid") {
+    redirect(`${returnTo}?success=${encodeURIComponent("Invoice already paid.")}`);
+  }
 
   const nowIso = new Date().toISOString();
+  const gatewayReference = paymentReference ?? paymentGatewayReference(paymentMethodRaw);
 
   const { error } = await supabase
     .from("billing_invoices")
     .update({
       status: "paid",
       paid_at: nowIso,
-      gateway_reference: `SIMULATED_${Date.now()}`,
+      gateway_reference: gatewayReference,
     })
     .eq("id", invoice.id);
 
   if (error) {
     redirect(`${returnTo}?error=${encodeURIComponent(error.message)}`);
+  }
+
+  if (invoice.appointment_id) {
+    await supabase
+      .from("claim_submissions")
+      .update({
+        status: "paid",
+        reviewed_at: nowIso,
+        settled_at: nowIso,
+        review_notes: "Auto-settled after invoice payment completion.",
+      })
+      .eq("appointment_id", invoice.appointment_id)
+      .in("status", ["submitted", "under_review", "approved"]);
   }
 
   await supabase.from("audit_logs").insert({
@@ -718,11 +928,31 @@ export async function markInvoicePaidAction(formData: FormData) {
     metadata: {
       paid_at: nowIso,
       previous_status: invoice.status,
+      previous_gateway_reference: invoice.gateway_reference,
+      payment_method: paymentMethodRaw,
+      gateway_reference: gatewayReference,
     },
   });
 
+  if (invoice.provider_id) {
+    await supabase.from("notification_events").insert({
+      recipient_id: invoice.provider_id,
+      sender_id: user.id,
+      appointment_id: invoice.appointment_id,
+      title: "Invoice payment completed",
+      message: `Payment received via ${paymentMethodRaw.replaceAll("_", " ")}.`,
+      channel: "in_app",
+      status: "sent",
+      sent_at: nowIso,
+      metadata: {
+        invoice_id: invoice.id,
+        gateway_reference: gatewayReference,
+      },
+    });
+  }
+
   revalidatePath(returnTo);
-  redirect(`${returnTo}?success=${encodeURIComponent("Payment marked successful (demo mode).")}`);
+  redirect(`${returnTo}?success=${encodeURIComponent("Payment processed successfully.")}`);
 }
 
 export async function submitClaimAction(formData: FormData) {
@@ -852,6 +1082,18 @@ export async function updateClaimStatusAction(formData: FormData) {
     redirect(`${returnTo}?error=${encodeURIComponent(error.message)}`);
   }
 
+  if (nextStatus === "paid") {
+    await supabase
+      .from("billing_invoices")
+      .update({
+        status: "paid",
+        paid_at: nowIso,
+        gateway_reference: `CLAIM_${claim.id.slice(0, 8).toUpperCase()}`,
+      })
+      .eq("appointment_id", claim.appointment_id)
+      .neq("status", "paid");
+  }
+
   await supabase.from("notification_events").insert({
     recipient_id: claim.patient_id,
     sender_id: user.id,
@@ -891,6 +1133,8 @@ export async function sendNotificationAction(formData: FormData) {
   const title = String(formData.get("title") ?? "").trim();
   const message = String(formData.get("message") ?? "").trim();
   const channel = String(formData.get("channel") ?? "in_app");
+  const destination = safeText(formData.get("destination"));
+  const scheduledForInput = safeText(formData.get("scheduled_for"));
 
   const { supabase, user, profile } = await requireProfile(returnTo);
 
@@ -902,6 +1146,20 @@ export async function sendNotificationAction(formData: FormData) {
   }
 
   const nowIso = new Date().toISOString();
+  const scheduledForIso = safeDate(scheduledForInput);
+  if (scheduledForInput && !scheduledForIso) {
+    redirect(`${returnTo}?error=${encodeURIComponent("Invalid scheduled time for notification.")}`);
+  }
+
+  const shouldQueueForFuture = scheduledForIso !== null && new Date(scheduledForIso).getTime() > Date.now();
+  const dispatchResult = shouldQueueForFuture
+    ? {
+        status: "queued" as const,
+        sentAt: null,
+        providerReference: null,
+        failureReason: "Scheduled for future dispatch.",
+      }
+    : await dispatchNotificationChannel(channel, title, message, destination);
 
   const { data: notification, error } = await supabase
     .from("notification_events")
@@ -912,8 +1170,14 @@ export async function sendNotificationAction(formData: FormData) {
       title,
       message,
       channel,
-      status: "sent",
-      sent_at: nowIso,
+      status: dispatchResult.status,
+      scheduled_for: scheduledForIso ?? nowIso,
+      sent_at: dispatchResult.sentAt,
+      metadata: {
+        destination,
+        provider_reference: dispatchResult.providerReference,
+        failure_reason: dispatchResult.failureReason,
+      },
     })
     .select("id")
     .single();
@@ -931,11 +1195,180 @@ export async function sendNotificationAction(formData: FormData) {
       recipient_id: recipientId,
       channel,
       appointment_id: appointmentId,
+      status: dispatchResult.status,
+      destination,
+      scheduled_for: scheduledForIso ?? nowIso,
+      provider_reference: dispatchResult.providerReference,
+      failure_reason: dispatchResult.failureReason,
     },
   });
 
   revalidatePath(returnTo);
-  redirect(`${returnTo}?success=${encodeURIComponent("Notification sent successfully.")}`);
+  if (dispatchResult.status === "sent") {
+    redirect(`${returnTo}?success=${encodeURIComponent("Notification delivered successfully.")}`);
+  }
+  if (dispatchResult.status === "queued") {
+    redirect(`${returnTo}?success=${encodeURIComponent("Notification queued successfully.")}`);
+  }
+  redirect(`${returnTo}?error=${encodeURIComponent(dispatchResult.failureReason ?? "Notification delivery failed.")}`);
+}
+
+export async function retryNotificationAction(formData: FormData) {
+  const returnTo = safePath(String(formData.get("return_to") ?? "/workspace/provider/dashboard"));
+  const notificationId = String(formData.get("notification_id") ?? "");
+
+  if (!notificationId) {
+    redirect(`${returnTo}?error=${encodeURIComponent("Notification id is required.")}`);
+  }
+
+  const { supabase, user, profile } = await requireProfile(returnTo);
+
+  const { data: notification, error: notificationError } = await supabase
+    .from("notification_events")
+    .select("id,sender_id,title,message,channel,status,scheduled_for,metadata")
+    .eq("id", notificationId)
+    .single();
+
+  if (notificationError || !notification) {
+    redirect(`${returnTo}?error=${encodeURIComponent(notificationError?.message ?? "Notification not found.")}`);
+  }
+
+  if (profile.role !== "admin" && notification.sender_id !== user.id) {
+    redirect(`${returnTo}?error=${encodeURIComponent("You cannot retry this notification.")}`);
+  }
+
+  const metadata = (notification.metadata ?? {}) as Record<string, unknown>;
+  const destinationRaw = metadata.destination;
+  const destination = typeof destinationRaw === "string" ? destinationRaw : null;
+  const dispatchResult = await dispatchNotificationChannel(
+    notification.channel as NotificationChannel,
+    notification.title,
+    notification.message,
+    destination,
+  );
+
+  const { error } = await supabase
+    .from("notification_events")
+    .update({
+      status: dispatchResult.status,
+      sent_at: dispatchResult.sentAt,
+      metadata: {
+        ...metadata,
+        provider_reference: dispatchResult.providerReference,
+        failure_reason: dispatchResult.failureReason,
+        last_retry_at: new Date().toISOString(),
+      },
+    })
+    .eq("id", notification.id);
+
+  if (error) {
+    redirect(`${returnTo}?error=${encodeURIComponent(error.message)}`);
+  }
+
+  await supabase.from("audit_logs").insert({
+    actor_id: user.id,
+    action: "notification.retry",
+    entity_type: "notification_events",
+    entity_id: notification.id,
+    metadata: {
+      previous_status: notification.status,
+      next_status: dispatchResult.status,
+      failure_reason: dispatchResult.failureReason,
+    },
+  });
+
+  revalidatePath(returnTo);
+  if (dispatchResult.status === "sent") {
+    redirect(`${returnTo}?success=${encodeURIComponent("Notification retried and delivered.")}`);
+  }
+  if (dispatchResult.status === "queued") {
+    redirect(`${returnTo}?success=${encodeURIComponent("Notification retry queued.")}`);
+  }
+  redirect(`${returnTo}?error=${encodeURIComponent(dispatchResult.failureReason ?? "Notification retry failed.")}`);
+}
+
+export async function dispatchDueNotificationsAction(formData: FormData) {
+  const returnTo = safePath(String(formData.get("return_to") ?? "/workspace/admin/operations"));
+  const { supabase, user, profile } = await requireProfile(returnTo);
+
+  if (profile.role !== "provider" && profile.role !== "admin") {
+    redirect(`${returnTo}?error=${encodeURIComponent("Only provider/admin can dispatch queued notifications.")}`);
+  }
+
+  let query = supabase
+    .from("notification_events")
+    .select("id,sender_id,title,message,channel,status,scheduled_for,metadata")
+    .eq("status", "queued")
+    .lte("scheduled_for", new Date().toISOString())
+    .order("scheduled_for", { ascending: true })
+    .limit(30);
+
+  if (profile.role !== "admin") {
+    query = query.eq("sender_id", user.id);
+  }
+
+  const { data: queuedRows, error: queuedError } = await query;
+  if (queuedError) {
+    redirect(`${returnTo}?error=${encodeURIComponent(queuedError.message)}`);
+  }
+
+  const queuedNotifications = queuedRows ?? [];
+  if (queuedNotifications.length === 0) {
+    redirect(`${returnTo}?success=${encodeURIComponent("No queued notifications due right now.")}`);
+  }
+
+  let sentCount = 0;
+  let failedCount = 0;
+  let queuedCount = 0;
+
+  for (const notification of queuedNotifications) {
+    const metadata = (notification.metadata ?? {}) as Record<string, unknown>;
+    const destinationRaw = metadata.destination;
+    const destination = typeof destinationRaw === "string" ? destinationRaw : null;
+    const dispatchResult = await dispatchNotificationChannel(
+      notification.channel as NotificationChannel,
+      notification.title,
+      notification.message,
+      destination,
+    );
+
+    if (dispatchResult.status === "sent") sentCount += 1;
+    if (dispatchResult.status === "failed") failedCount += 1;
+    if (dispatchResult.status === "queued") queuedCount += 1;
+
+    await supabase
+      .from("notification_events")
+      .update({
+        status: dispatchResult.status,
+        sent_at: dispatchResult.sentAt,
+        metadata: {
+          ...metadata,
+          provider_reference: dispatchResult.providerReference,
+          failure_reason: dispatchResult.failureReason,
+          last_dispatch_attempt_at: new Date().toISOString(),
+        },
+      })
+      .eq("id", notification.id);
+  }
+
+  await supabase.from("audit_logs").insert({
+    actor_id: user.id,
+    action: "notification.dispatch_due",
+    entity_type: "notification_events",
+    metadata: {
+      processed: queuedNotifications.length,
+      sent: sentCount,
+      failed: failedCount,
+      queued: queuedCount,
+    },
+  });
+
+  revalidatePath(returnTo);
+  redirect(
+    `${returnTo}?success=${encodeURIComponent(
+      `Dispatch completed: ${sentCount} sent, ${failedCount} failed, ${queuedCount} still queued.`,
+    )}`,
+  );
 }
 
 export async function markNotificationReadAction(formData: FormData) {
@@ -1242,7 +1675,7 @@ export async function updateIncidentReportAction(formData: FormData) {
     .from("incident_reports")
     .update({
       status: nextStatus,
-      assigned_to: assignedTo,
+      assigned_to: assignedTo ?? incident.assigned_to,
       resolution_notes: nextResolutionNotes,
       resolved_at: shouldSetResolvedAt ? nowIso : null,
     })

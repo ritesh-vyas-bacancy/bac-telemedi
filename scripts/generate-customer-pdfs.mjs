@@ -10,12 +10,12 @@ const outputDir = path.join(docsDir, "pdf");
 const targets = [
   {
     markdown: path.join(docsDir, "MVP_Scope_Workflow.md"),
-    title: "Telemedicine MVP Scope and Workflow",
+    title: "Telemedicine Enterprise Scope and Workflow",
     outputBase: "Telemedicine_MVP_Scope_and_Workflow",
   },
   {
     markdown: path.join(docsDir, "Phase_Roadmap_Sprint_Plan.md"),
-    title: "Telemedicine Roadmap and Sprint Plan",
+    title: "Telemedicine Enterprise Capability Matrix",
     outputBase: "Telemedicine_Phase_Roadmap_and_Sprint_Plan",
   },
 ];

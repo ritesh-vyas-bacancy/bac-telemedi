@@ -1,8 +1,8 @@
-# Telemedicine MVP v2 Scope and Workflow (Customer Share)
+# Telemedicine Enterprise Scope and Workflow (Customer Share)
 
 ## 1) Product objective
 
-Deliver a demo-ready telemedicine platform that validates real operational value across three personas.
+Deliver a complete telemedicine platform that validates real operational value across three personas.
 This objective is completed in the current build:
 - Patient
 - Provider
@@ -18,7 +18,7 @@ This version includes secure auth, role-based workflows, appointment operations,
 - Admin-level real-time operational and billing visibility
 
 ### Revenue direction
-- Consultation fee per appointment (billing simulation in this build)
+- Consultation fee per appointment (live invoice settlement workflow)
 - Provider enablement through clinical workflow tooling
 - Operations dashboard for scale and governance
 
@@ -45,7 +45,7 @@ This version includes secure auth, role-based workflows, appointment operations,
 |---|---|---|---|
 | Shared | Auth and role routing | Sign up/sign in/sign out, route protection | Live |
 | Patient | Booking | Provider selection, schedule, reason, invoice seed | Live |
-| Patient | Visits | Appointment timeline, check-in, invoice pay simulation, care updates | Live |
+| Patient | Visits | Appointment timeline, check-in, invoice payment, care updates | Live |
 | Provider | Dashboard | Queue + consultation state transitions + readiness view | Live |
 | Provider | Claims + Notifications | Claim submission and patient communication events | Live |
 | Provider | Patient Panel | SOAP notes, note signing, prescription issue, care orders | Live |
@@ -53,7 +53,7 @@ This version includes secure auth, role-based workflows, appointment operations,
 | Admin | Pulse | Appointment + consultation + billing KPI snapshot | Live |
 | Admin | Operations | Appointment controls, claims review, compliance + incidents, permission matrix | Live |
 | Admin | Audit | Action stream and metadata trail | Live |
-| Shared | High-fidelity journey prototype | Full visual walkthrough | Live (`/prototype`) |
+| Shared | Full journey interface | Direct production-ready role workspaces | Live (`/workspace`) |
 
 ## 5) Workflow summary
 
@@ -126,15 +126,9 @@ Migration files:
 - Ownership checks on write actions
 - Audit logs for major state transitions
 
-## 8) Optional enterprise extensions after MVP
-
-- Managed real-time media stack (self-hosted WebRTC/SFU beyond current embedded teleconsult room)
-- Deep payment gateway and clearing-house integrations (beyond current billing/claims workflow)
-- Enterprise SRE stack (advanced observability, DR exercises, automated incident response)
-
-## 9) Demo value summary
+## 8) Delivery summary
 
 This build is suitable for business demo and customer walkthrough:
 - Complete role journeys are functional
 - Clinical flow is no longer superficial (notes + Rx + orders + lifecycle)
-- Data and security foundation are extensible for full production roadmap
+- Data and security foundation is active for production execution
