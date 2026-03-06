@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { signOutAction } from "@/app/auth/actions";
 import { requireProfile } from "@/lib/auth/session";
 import { getDefaultModuleByRole } from "@/lib/workspace/config";
@@ -13,17 +14,15 @@ export default async function WorkspaceLayout({ children }: WorkspaceLayoutProps
 
   return (
     <div className="min-h-screen">
-      <header className="sticky top-0 z-40 border-b border-cyan-100 bg-white/88 backdrop-blur-xl">
-        <div className="mx-auto flex w-full max-w-[1600px] items-center justify-between gap-3 px-4 py-3 sm:px-6">
+      <header className="sticky top-0 z-50 border-b border-cyan-100 bg-white/90 backdrop-blur-xl">
+        <div className="mx-auto flex w-full max-w-[1700px] items-center justify-between gap-3 px-4 py-3 sm:px-6">
           <div className="flex items-center gap-3">
-            <div className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 text-sm font-bold text-white shadow-[0_12px_24px_-14px_rgba(8,145,178,0.95)]">
-              BT
+            <div className="inline-flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl border border-cyan-200 bg-white shadow-[0_12px_24px_-14px_rgba(8,145,178,0.95)]">
+              <Image src="/brand/logo-mark.svg" alt="BAC Telemedicine" width={32} height={32} />
             </div>
             <div>
               <p className="text-[11px] font-semibold tracking-[0.16em] text-cyan-700">BAC TELEMEDICINE</p>
-              <p className="text-sm font-semibold text-slate-900">
-                {profile.full_name ?? "User"}
-              </p>
+              <p className="text-sm font-semibold text-slate-900">{profile.full_name ?? "User"}</p>
             </div>
             <span className="rounded-full border border-cyan-200 bg-cyan-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-cyan-800">
               {profile.role}

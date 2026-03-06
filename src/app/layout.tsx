@@ -4,6 +4,11 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "BAC Telemedicine | Enterprise Virtual Care",
   description: "Enterprise telemedicine platform for patient, provider, and admin operations.",
+  icons: {
+    icon: "/brand/favicon.svg",
+    shortcut: "/brand/favicon.svg",
+    apple: "/brand/favicon.svg",
+  },
 };
 
 export default function RootLayout({

@@ -1,6 +1,7 @@
 import { redirect, notFound } from "next/navigation";
 import { canAccessPersona, requireProfile } from "@/lib/auth/session";
-import { PERSONAS } from "@/lib/workspace/config";
+import { PERSONAS, getPersonaConfig } from "@/lib/workspace/config";
+import { PersonaSidebar } from "@/components/workspace/persona-sidebar";
 
 type PersonaLayoutProps = {
   children: React.ReactNode;
@@ -19,5 +20,21 @@ export default async function PersonaLayout({ children, params }: PersonaLayoutP
     redirect(`/workspace/${profile.role}`);
   }
 
-  return <>{children}</>;
+  const personaConfig = getPersonaConfig(persona);
+  if (!personaConfig) {
+    notFound();
+  }
+
+  return (
+    <div className={`role-theme-${personaConfig.id}`}>
+      <div className="mx-auto flex w-full max-w-[1700px] gap-4 px-2 py-3 sm:px-4">
+        <PersonaSidebar
+          persona={personaConfig.id}
+          personaLabel={personaConfig.label}
+          modules={personaConfig.modules}
+        />
+        <div className="min-w-0 flex-1">{children}</div>
+      </div>
+    </div>
+  );
 }

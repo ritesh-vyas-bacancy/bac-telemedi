@@ -7,6 +7,10 @@
   --surface-strong: rgba(255, 255, 255, 0.94);
   --surface-border: rgba(14, 116, 144, 0.16);
   --shadow-soft: 0 20px 60px -38px rgba(8, 47, 73, 0.72);
+  --role-primary: #0891b2;
+  --role-secondary: #2563eb;
+  --role-soft: rgba(207, 250, 254, 0.5);
+  --role-ring: rgba(14, 116, 144, 0.24);
 }
 
 @theme inline {
@@ -80,28 +84,83 @@ body {
 
 .workspace-main [class*="border-slate-200"],
 .workspace-main [class*="border-slate-300"] {
-  border-color: rgba(8, 145, 178, 0.2);
+  border-color: var(--role-ring);
 }
 
 .workspace-main input,
 .workspace-main select,
 .workspace-main textarea {
-  border-color: rgba(8, 145, 178, 0.28);
+  border-color: var(--role-ring);
   background: var(--surface-strong);
 }
 
 .workspace-main button[type="submit"] {
   border-color: transparent;
-  background-image: linear-gradient(to right, #0891b2, #2563eb);
+  background-image: linear-gradient(to right, var(--role-primary), var(--role-secondary));
   color: #fff;
+  box-shadow: 0 12px 28px -16px color-mix(in srgb, var(--role-primary) 70%, #000 30%);
+  transition: transform 180ms ease, filter 180ms ease, box-shadow 180ms ease;
 }
 
 .workspace-main button[type="submit"]:hover {
   filter: brightness(1.05);
+  transform: translateY(-1px);
 }
 
 .workspace-main a[href^="/workspace/call/"] {
-  border-color: rgba(37, 99, 235, 0.24);
-  background: rgba(219, 234, 254, 0.72);
-  color: #1e40af;
+  border-color: var(--role-ring);
+  background: var(--role-soft);
+  color: color-mix(in srgb, var(--role-secondary) 78%, #0f172a 22%);
+}
+
+.workspace-main article,
+.workspace-main section {
+  transition: transform 220ms ease, box-shadow 220ms ease;
+}
+
+.workspace-main article:hover,
+.workspace-main section:hover {
+  box-shadow: 0 26px 70px -44px rgba(8, 47, 73, 0.75);
+}
+
+.role-theme-patient {
+  --role-primary: #0891b2;
+  --role-secondary: #0ea5e9;
+  --role-soft: rgba(207, 250, 254, 0.56);
+  --role-ring: rgba(6, 182, 212, 0.26);
+}
+
+.role-theme-provider {
+  --role-primary: #4f46e5;
+  --role-secondary: #2563eb;
+  --role-soft: rgba(224, 231, 255, 0.62);
+  --role-ring: rgba(79, 70, 229, 0.26);
+}
+
+.role-theme-admin {
+  --role-primary: #16a34a;
+  --role-secondary: #059669;
+  --role-soft: rgba(220, 252, 231, 0.66);
+  --role-ring: rgba(22, 163, 74, 0.24);
+}
+
+.role-theme-patient .prototype-bg {
+  background:
+    radial-gradient(circle at 8% 12%, rgba(6, 182, 212, 0.26), transparent 40%),
+    radial-gradient(circle at 84% 14%, rgba(14, 165, 233, 0.2), transparent 42%),
+    linear-gradient(170deg, #f7fdff 0%, #ebf9ff 52%, #ecfbff 100%);
+}
+
+.role-theme-provider .prototype-bg {
+  background:
+    radial-gradient(circle at 10% 10%, rgba(99, 102, 241, 0.24), transparent 40%),
+    radial-gradient(circle at 86% 14%, rgba(59, 130, 246, 0.22), transparent 42%),
+    linear-gradient(170deg, #f8faff 0%, #eef4ff 52%, #ecf2ff 100%);
+}
+
+.role-theme-admin .prototype-bg {
+  background:
+    radial-gradient(circle at 9% 11%, rgba(34, 197, 94, 0.24), transparent 40%),
+    radial-gradient(circle at 86% 15%, rgba(16, 185, 129, 0.2), transparent 42%),
+    linear-gradient(170deg, #f8fff9 0%, #eefcf1 52%, #ecfaf4 100%);
 }

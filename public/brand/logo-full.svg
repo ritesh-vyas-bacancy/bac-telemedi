@@ -1,0 +1,14 @@
+<svg width="548" height="128" viewBox="0 0 548 128" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="BAC Telemedicine">
+  <defs>
+    <linearGradient id="mark" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0ea5e9"/>
+      <stop offset="55%" stop-color="#2563eb"/>
+      <stop offset="100%" stop-color="#14b8a6"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="120" height="120" rx="28" fill="url(#mark)"/>
+  <path d="M28 66h14l8-18 11 32 7-14h20" stroke="#ffffff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M46 24v20M36 34h20" stroke="#ffffff" stroke-width="6" stroke-linecap="round"/>
+  <text x="148" y="58" font-family="Manrope, Segoe UI, sans-serif" font-size="42" font-weight="800" fill="#0f172a">BAC</text>
+  <text x="148" y="96" font-family="Manrope, Segoe UI, sans-serif" font-size="34" font-weight="700" fill="#0b5c7a">Telemedicine</text>
+</svg>

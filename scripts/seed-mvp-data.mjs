@@ -29,23 +29,32 @@ if (!supabaseUrl || !supabaseAnonKey) {
 }
 
 const DEMO_PASSWORD = process.env.MVP_DEMO_PASSWORD || "DemoPass#2026";
-const DEMO_TAG = process.env.MVP_SEED_TAG || String(Date.now());
+const DEMO_TAG = process.env.MVP_SEED_TAG || "enterprise";
+
+const VISIT_REASONS = [
+  "Eye consultation for screen fatigue",
+  "Follow-up for migraine management",
+  "General physician review for seasonal flu",
+  "Diabetes medication adjustment",
+  "Skin allergy assessment",
+  "Pediatric wellness check",
+];
 
 const DEMO_USERS = [
   {
     role: "patient",
-    email: `mvp.patient.${DEMO_TAG}@gmail.com`,
-    fullName: "MVP Patient User",
+    email: process.env.MVP_PATIENT_EMAIL || `patient.${DEMO_TAG}@bac-telemedi.demo`,
+    fullName: "Riya Mehta",
   },
   {
     role: "provider",
-    email: `mvp.provider.${DEMO_TAG}@gmail.com`,
-    fullName: "MVP Provider User",
+    email: process.env.MVP_PROVIDER_EMAIL || `provider.${DEMO_TAG}@bac-telemedi.demo`,
+    fullName: "Dr. Arjun Rao",
   },
   {
     role: "admin",
-    email: `mvp.admin.${DEMO_TAG}@gmail.com`,
-    fullName: "MVP Admin User",
+    email: process.env.MVP_ADMIN_EMAIL || `admin.${DEMO_TAG}@bac-telemedi.demo`,
+    fullName: "Ananya Singh",
   },
 ];
 
@@ -88,7 +97,7 @@ async function getAuthedClient({ email, role, fullName, password }) {
   const signInResult = await client.auth.signInWithPassword({ email, password });
   if (signInResult.error) {
     throw new Error(
-      `signIn failed for ${email}: ${signInResult.error.message}. If email confirmation is enabled, disable it for MVP or confirm the user manually.`,
+      `signIn failed for ${email}: ${signInResult.error.message}. If email confirmation is enabled, disable it in Supabase Auth or confirm the user manually.`,
     );
   }
 
@@ -157,23 +166,23 @@ async function ensureSeedAppointments(patientClient, patientId, providerId) {
     .select("id,status,reason")
     .eq("patient_id", patientId)
     .eq("provider_id", providerId)
-    .ilike("reason", "MVP Seed%")
+    .ilike("reason", "Enterprise Seed%")
     .order("created_at", { ascending: false })
-    .limit(3);
+    .limit(8);
 
   if (existing.error) {
     throw new Error(`appointments select failed: ${existing.error.message}`);
   }
 
   const rows = existing.data || [];
-  if (rows.length < 3) {
-    const needed = 3 - rows.length;
+  if (rows.length < 6) {
+    const needed = 6 - rows.length;
     const toInsert = Array.from({ length: needed }).map((_, idx) => ({
       patient_id: patientId,
       provider_id: providerId,
       scheduled_at: buildFutureIso(2 + idx * 2),
       duration_minutes: 30,
-      reason: `MVP Seed ${rows.length + idx + 1}`,
+      reason: `Enterprise Seed ${rows.length + idx + 1}: ${VISIT_REASONS[(rows.length + idx) % VISIT_REASONS.length]}`,
       status: "booked",
     }));
 
@@ -188,7 +197,7 @@ async function ensureSeedAppointments(patientClient, patientId, providerId) {
     .select("id,status,reason,scheduled_at")
     .eq("patient_id", patientId)
     .eq("provider_id", providerId)
-    .ilike("reason", "MVP Seed%")
+    .ilike("reason", "Enterprise Seed%")
     .order("created_at", { ascending: false })
     .limit(10);
 
@@ -200,12 +209,14 @@ async function ensureSeedAppointments(patientClient, patientId, providerId) {
 }
 
 async function updateProviderQueueStates(providerClient, providerId, seedAppointments) {
-  const booked = seedAppointments.filter((a) => a.status === "booked");
-  const updates = [
-    { row: booked[0], status: "in_progress" },
-    { row: booked[1], status: "completed" },
-    { row: booked[2], status: "cancelled" },
-  ].filter((x) => Boolean(x.row));
+  const ordered = [...seedAppointments].sort(
+    (a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime(),
+  );
+  const targetStatuses = ["in_progress", "completed", "cancelled", "booked", "completed", "in_progress"];
+  const updates = ordered.map((row, index) => ({
+    row,
+    status: targetStatuses[index % targetStatuses.length],
+  }));
 
   for (const item of updates) {
     const result = await providerClient
@@ -226,9 +237,9 @@ async function readSeedAppointments(patientClient, patientId, providerId) {
     .select("id,status,reason,scheduled_at,patient_id,provider_id,meeting_url")
     .eq("patient_id", patientId)
     .eq("provider_id", providerId)
-    .ilike("reason", "MVP Seed%")
+    .ilike("reason", "Enterprise Seed%")
     .order("scheduled_at", { ascending: true })
-    .limit(10);
+    .limit(20);
 
   if (seedRows.error) {
     throw new Error(`seed appointments read failed: ${seedRows.error.message}`);
@@ -279,18 +290,46 @@ async function ensureClinicalArtifacts(providerClient, patientId, providerId, ap
     }
   }
 
-  const completedAppointment = appointments.find((item) => item.status === "completed") || appointments[0];
-  if (completedAppointment) {
+  const orderedAppointments = [...appointments].sort(
+    (a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime(),
+  );
+  const noteTemplates = [
+    {
+      subjective: "Patient reports persistent eye strain after prolonged laptop sessions.",
+      objective: "No redness. Mild dryness observed.",
+      assessment: "Digital eye strain with sleep disruption.",
+      plan: "Screen-break routine, lubricating drops, and blue-light hygiene.",
+    },
+    {
+      subjective: "Patient follows up for recurring migraine episodes.",
+      objective: "Vitals stable. No focal neurological deficit.",
+      assessment: "Migraine without aura, stress-triggered.",
+      plan: "Hydration, trigger journal, rescue medication plan.",
+    },
+    {
+      subjective: "Patient reports sore throat and low-grade fever for 2 days.",
+      objective: "Mild throat congestion, oxygen saturation normal.",
+      assessment: "Upper respiratory tract infection.",
+      plan: "Symptomatic treatment and red-flag guidance.",
+    },
+    {
+      subjective: "Patient requests review for long-term diabetes medication response.",
+      objective: "Home sugar chart reviewed, fasting trend elevated.",
+      assessment: "Suboptimal glycemic control.",
+      plan: "Dose adjustment and nutrition follow-up in one week.",
+    },
+  ];
+
+  for (const [index, appointment] of orderedAppointments.slice(0, 6).entries()) {
+    const template = noteTemplates[index % noteTemplates.length];
+    const noteStatus = appointment.status === "completed" ? "signed" : "draft";
     const noteUpsert = await providerClient.from("encounter_notes").upsert(
       {
-        appointment_id: completedAppointment.id,
+        appointment_id: appointment.id,
         patient_id: patientId,
         provider_id: providerId,
-        subjective: "Patient reports recurring headache for 3 days.",
-        objective: "Vitals stable. No neurological deficit.",
-        assessment: "Tension headache, mild dehydration.",
-        plan: "Hydration, rest, analgesic PRN, follow-up in 3 days.",
-        status: completedAppointment.status === "completed" ? "signed" : "draft",
+        ...template,
+        status: noteStatus,
       },
       { onConflict: "appointment_id" },
     );
@@ -298,11 +337,20 @@ async function ensureClinicalArtifacts(providerClient, patientId, providerId, ap
     if (noteUpsert.error) {
       throw new Error(`encounter_notes upsert failed: ${noteUpsert.error.message}`);
     }
+  }
 
+  const completedAppointment = orderedAppointments.find((item) => item.status === "completed") || orderedAppointments[0];
+  const activeAppointment =
+    orderedAppointments.find((item) => item.status === "in_progress" || item.status === "booked") ||
+    orderedAppointments[1] ||
+    orderedAppointments[0];
+
+  const prescriptionTargets = Array.from(new Set([completedAppointment?.id, activeAppointment?.id].filter(Boolean)));
+  for (const appointmentId of prescriptionTargets) {
     const existingRx = await providerClient
       .from("prescriptions")
       .select("id")
-      .eq("appointment_id", completedAppointment.id)
+      .eq("appointment_id", appointmentId)
       .limit(1);
 
     if (existingRx.error) {
@@ -310,13 +358,16 @@ async function ensureClinicalArtifacts(providerClient, patientId, providerId, ap
     }
 
     if ((existingRx.data || []).length === 0) {
+      const isCompleted = appointmentId === completedAppointment?.id;
       const rxInsert = await providerClient.from("prescriptions").insert({
-        appointment_id: completedAppointment.id,
+        appointment_id: appointmentId,
         patient_id: patientId,
         provider_id: providerId,
-        medication_name: "Paracetamol 650mg",
-        dosage: "1 tablet twice daily for 3 days",
-        instructions: "Take after food. Maintain hydration.",
+        medication_name: isCompleted ? "Paracetamol 650mg" : "Cetirizine 10mg",
+        dosage: isCompleted ? "1 tablet twice daily for 3 days" : "1 tablet at bedtime for 5 days",
+        instructions: isCompleted
+          ? "Take after food and maintain hydration."
+          : "Avoid driving if drowsy. Review if symptoms persist.",
         status: "sent",
       });
 
@@ -324,11 +375,14 @@ async function ensureClinicalArtifacts(providerClient, patientId, providerId, ap
         throw new Error(`prescriptions insert failed: ${rxInsert.error.message}`);
       }
     }
+  }
 
+  const orderTargets = Array.from(new Set([completedAppointment?.id, activeAppointment?.id].filter(Boolean)));
+  for (const appointmentId of orderTargets) {
     const existingOrder = await providerClient
       .from("care_orders")
       .select("id")
-      .eq("appointment_id", completedAppointment.id)
+      .eq("appointment_id", appointmentId)
       .limit(1);
 
     if (existingOrder.error) {
@@ -336,14 +390,17 @@ async function ensureClinicalArtifacts(providerClient, patientId, providerId, ap
     }
 
     if ((existingOrder.data || []).length === 0) {
+      const isCompleted = appointmentId === completedAppointment?.id;
       const orderInsert = await providerClient.from("care_orders").insert({
-        appointment_id: completedAppointment.id,
+        appointment_id: appointmentId,
         patient_id: patientId,
         provider_id: providerId,
-        order_type: "follow_up",
-        title: "Follow-up consultation",
-        details: "Reassess headache trend and hydration status.",
-        due_date: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+        order_type: isCompleted ? "follow_up" : "lab",
+        title: isCompleted ? "Follow-up consultation" : "CBC and CRP panel",
+        details: isCompleted
+          ? "Reassess symptoms and adherence in 3 days."
+          : "Complete lab before next consult and upload report.",
+        due_date: new Date(Date.now() + (isCompleted ? 3 : 2) * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
         status: "open",
       });
 
@@ -427,15 +484,15 @@ async function ensureOperationsArtifacts(
         payer_name: "Self-pay",
         amount_claimed: 499,
         status: claimStatus,
-        claim_reference: `MVP-CLAIM-${appointment.id.slice(0, 8).toUpperCase()}`,
+        claim_reference: `ENT-CLAIM-${appointment.id.slice(0, 8).toUpperCase()}`,
         submitted_at: nowIso,
         reviewed_at: claimStatus === "rejected" || claimStatus === "paid" ? nowIso : null,
         settled_at: claimStatus === "paid" ? nowIso : null,
         review_notes:
           claimStatus === "rejected"
-            ? "MVP Seed: cancelled appointment not eligible."
+            ? "Enterprise seed: cancelled appointment not eligible."
             : claimStatus === "paid"
-              ? "MVP Seed: paid in full."
+              ? "Enterprise seed: paid in full."
               : null,
       },
       { onConflict: "appointment_id" },
@@ -450,8 +507,8 @@ async function ensureOperationsArtifacts(
     .from("notification_events")
     .select("id")
     .eq("recipient_id", patientId)
-    .ilike("title", "MVP Seed:%")
-    .limit(3);
+    .ilike("title", "Enterprise Seed:%")
+    .limit(8);
 
   if (existingPatientNotifications.error) {
     throw new Error(`notification_events read failed: ${existingPatientNotifications.error.message}`);
@@ -463,22 +520,60 @@ async function ensureOperationsArtifacts(
         recipient_id: patientId,
         sender_id: providerId,
         appointment_id: appointments[0]?.id ?? null,
-        title: "MVP Seed: Visit reminder",
+        title: "Enterprise Seed: Visit reminder",
         message: "Your consultation is on schedule. Please check in 10 minutes early.",
         channel: "in_app",
         status: "sent",
+        scheduled_for: nowIso,
         sent_at: nowIso,
+        metadata: {
+          destination: null,
+          provider_reference: null,
+        },
       },
       {
         recipient_id: patientId,
         sender_id: providerId,
         appointment_id: appointments[1]?.id ?? null,
-        title: "MVP Seed: Claim update",
+        title: "Enterprise Seed: Claim update",
         message: "Your claim is currently under review.",
-        channel: "in_app",
+        channel: "email",
         status: "read",
+        scheduled_for: nowIso,
         sent_at: nowIso,
         read_at: nowIso,
+        metadata: {
+          destination: DEMO_USERS[0].email,
+          provider_reference: "MAIL_SEED_01",
+        },
+      },
+      {
+        recipient_id: patientId,
+        sender_id: providerId,
+        appointment_id: appointments[2]?.id ?? null,
+        title: "Enterprise Seed: Lab reminder",
+        message: "Please complete your diagnostic lab panel before next consult.",
+        channel: "sms",
+        status: "queued",
+        scheduled_for: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+        metadata: {
+          destination: "+919876543210",
+          failure_reason: "Scheduled for dispatch by operations scheduler.",
+        },
+      },
+      {
+        recipient_id: patientId,
+        sender_id: providerId,
+        appointment_id: appointments[3]?.id ?? null,
+        title: "Enterprise Seed: Prescription pickup",
+        message: "Your medication is ready. Confirm pickup from your pharmacy.",
+        channel: "whatsapp",
+        status: "failed",
+        scheduled_for: nowIso,
+        metadata: {
+          destination: "whatsapp:+919876543210",
+          failure_reason: "Sample provider delivery failure for retry testing.",
+        },
       },
     ]);
 
@@ -491,7 +586,7 @@ async function ensureOperationsArtifacts(
     .from("notification_events")
     .select("id")
     .eq("recipient_id", providerId)
-    .ilike("title", "MVP Seed: Admin%")
+    .ilike("title", "Enterprise Seed: Admin%")
     .limit(1);
 
   if (adminNotification.error) {
@@ -503,7 +598,7 @@ async function ensureOperationsArtifacts(
       recipient_id: providerId,
       sender_id: adminId,
       appointment_id: appointments[0]?.id ?? null,
-      title: "MVP Seed: Admin follow-up",
+      title: "Enterprise Seed: Admin follow-up",
       message: "Please review claim queue and compliance items.",
       channel: "in_app",
       status: "sent",
@@ -519,8 +614,8 @@ async function ensureOperationsArtifacts(
     .from("compliance_events")
     .select("id")
     .eq("actor_id", providerId)
-    .ilike("event_type", "MVP Seed:%")
-    .limit(2);
+    .ilike("event_type", "Enterprise Seed:%")
+    .limit(4);
 
   if (complianceExisting.error) {
     throw new Error(`compliance_events read failed: ${complianceExisting.error.message}`);
@@ -532,7 +627,7 @@ async function ensureOperationsArtifacts(
         actor_id: providerId,
         patient_id: patientId,
         appointment_id: appointments[0]?.id ?? null,
-        event_type: "MVP Seed: Identity confirmation",
+        event_type: "Enterprise Seed: Identity confirmation",
         risk_level: "medium",
         details: "Patient ID validated at check-in.",
         is_resolved: true,
@@ -543,9 +638,18 @@ async function ensureOperationsArtifacts(
         actor_id: providerId,
         patient_id: patientId,
         appointment_id: appointments[1]?.id ?? null,
-        event_type: "MVP Seed: Follow-up risk",
+        event_type: "Enterprise Seed: Follow-up risk",
         risk_level: "high",
         details: "Follow-up pending provider review.",
+        is_resolved: false,
+      },
+      {
+        actor_id: providerId,
+        patient_id: patientId,
+        appointment_id: appointments[2]?.id ?? null,
+        event_type: "Enterprise Seed: Controlled substance check",
+        risk_level: "critical",
+        details: "Manual approval required before refill authorization.",
         is_resolved: false,
       },
     ]);
@@ -558,8 +662,8 @@ async function ensureOperationsArtifacts(
   const incidentExisting = await adminClient
     .from("incident_reports")
     .select("id")
-    .ilike("title", "MVP Seed:%")
-    .limit(2);
+    .ilike("title", "Enterprise Seed:%")
+    .limit(4);
 
   if (incidentExisting.error) {
     throw new Error(`incident_reports read failed: ${incidentExisting.error.message}`);
@@ -568,7 +672,7 @@ async function ensureOperationsArtifacts(
   if ((incidentExisting.data || []).length === 0) {
     const incidentInsert = await adminClient.from("incident_reports").insert([
       {
-        title: "MVP Seed: Delayed consult join",
+        title: "Enterprise Seed: Delayed consult join",
         description: "Provider joined consultation room with a short delay.",
         severity: "low",
         status: "resolved",
@@ -580,13 +684,23 @@ async function ensureOperationsArtifacts(
         resolution_notes: "Resolved after route health verification.",
       },
       {
-        title: "MVP Seed: Notification dispatch lag",
+        title: "Enterprise Seed: Notification dispatch lag",
         description: "One notification dispatched with delay for test scenario.",
         severity: "medium",
-        status: "open",
+        status: "in_progress",
         opened_by: adminId,
         assigned_to: providerId,
         appointment_id: appointments[1]?.id ?? null,
+        opened_at: nowIso,
+      },
+      {
+        title: "Enterprise Seed: Billing reconciliation mismatch",
+        description: "Invoice and claim status mismatch detected in periodic audit.",
+        severity: "high",
+        status: "open",
+        opened_by: adminId,
+        assigned_to: providerId,
+        appointment_id: appointments[2]?.id ?? null,
         opened_at: nowIso,
       },
     ]);
@@ -608,10 +722,86 @@ async function ensureOperationsArtifacts(
   if (permissionUpsert.error) {
     throw new Error(`role_permissions upsert failed: ${permissionUpsert.error.message}`);
   }
+
+  const existingMessages = await providerClient
+    .from("messages")
+    .select("id")
+    .eq("sender_id", providerId)
+    .eq("recipient_id", patientId)
+    .limit(8);
+
+  if (existingMessages.error) {
+    throw new Error(`messages read failed: ${existingMessages.error.message}`);
+  }
+
+  if ((existingMessages.data || []).length === 0) {
+    const messageInsert = await providerClient.from("messages").insert([
+      {
+        appointment_id: appointments[0]?.id ?? appointments[1]?.id,
+        sender_id: providerId,
+        recipient_id: patientId,
+        body: "Please complete pre-visit checklist 15 minutes before your consult.",
+      },
+      {
+        appointment_id: appointments[1]?.id ?? appointments[0]?.id,
+        sender_id: providerId,
+        recipient_id: patientId,
+        body: "I reviewed your latest symptom timeline and medication list before consult.",
+      },
+      {
+        appointment_id: appointments[2]?.id ?? appointments[0]?.id,
+        sender_id: providerId,
+        recipient_id: patientId,
+        body: "Lab order added. Upload reports in portal once available.",
+      },
+    ]);
+
+    if (messageInsert.error) {
+      throw new Error(`messages insert failed: ${messageInsert.error.message}`);
+    }
+  }
+
+  const existingAudit = await adminClient
+    .from("audit_logs")
+    .select("id")
+    .ilike("action", "seed.%")
+    .limit(5);
+
+  if (existingAudit.error) {
+    throw new Error(`audit_logs read failed: ${existingAudit.error.message}`);
+  }
+
+  if ((existingAudit.data || []).length === 0) {
+    const auditInsert = await adminClient.from("audit_logs").insert([
+      {
+        actor_id: adminId,
+        action: "seed.data_initialized",
+        entity_type: "seed",
+        metadata: { total_seed_appointments: appointments.length },
+      },
+      {
+        actor_id: providerId,
+        action: "seed.provider_reviewed_queue",
+        entity_type: "appointments",
+        entity_id: appointments[0]?.id ?? null,
+        metadata: { queue_status: "reviewed" },
+      },
+      {
+        actor_id: patientId,
+        action: "seed.patient_checked_notifications",
+        entity_type: "notification_events",
+        metadata: { unread_remaining: 2 },
+      },
+    ]);
+
+    if (auditInsert.error) {
+      throw new Error(`audit_logs insert failed: ${auditInsert.error.message}`);
+    }
+  }
 }
 
 async function verifyPatientFlow(patientClient, patientId) {
-  const [providers, appointments, sessions, invoices, claims, notifications] = await Promise.all([
+  const [providers, appointments, sessions, invoices, claims, notifications, messages] = await Promise.all([
     patientClient.from("profiles").select("id,full_name,role").eq("role", "provider").limit(10),
     patientClient
       .from("appointments")
@@ -643,6 +833,12 @@ async function verifyPatientFlow(patientClient, patientId) {
       .eq("recipient_id", patientId)
       .order("created_at", { ascending: false })
       .limit(30),
+    patientClient
+      .from("messages")
+      .select("id,appointment_id,body,created_at")
+      .or(`sender_id.eq.${patientId},recipient_id.eq.${patientId}`)
+      .order("created_at", { ascending: false })
+      .limit(30),
   ]);
 
   if (providers.error) throw new Error(`patient providers read failed: ${providers.error.message}`);
@@ -659,11 +855,15 @@ async function verifyPatientFlow(patientClient, patientId) {
   if (notifications.error && !isMissingRelationError(notifications.error)) {
     throw new Error(`patient notifications read failed: ${notifications.error.message}`);
   }
+  if (messages.error && !isMissingRelationError(messages.error)) {
+    throw new Error(`patient messages read failed: ${messages.error.message}`);
+  }
 
   const sessionData = sessions.error ? [] : sessions.data || [];
   const invoiceData = invoices.error ? [] : invoices.data || [];
   const claimData = claims.error ? [] : claims.data || [];
   const notificationData = notifications.error ? [] : notifications.data || [];
+  const messageData = messages.error ? [] : messages.data || [];
 
   return {
     providerCount: (providers.data || []).length,
@@ -672,16 +872,18 @@ async function verifyPatientFlow(patientClient, patientId) {
     invoiceCount: invoiceData.length,
     claimCount: claimData.length,
     notificationCount: notificationData.length,
+    messageCount: messageData.length,
     sampleAppointments: (appointments.data || []).slice(0, 5),
     sampleConsultations: sessionData.slice(0, 5),
     sampleInvoices: invoiceData.slice(0, 3),
     sampleClaims: claimData.slice(0, 3),
     sampleNotifications: notificationData.slice(0, 3),
+    sampleMessages: messageData.slice(0, 3),
   };
 }
 
 async function verifyProviderFlow(providerClient, providerId) {
-  const [queue, sessions, notes, careOrders, claims, notifications, incidents] = await Promise.all([
+  const [queue, sessions, notes, careOrders, claims, notifications, incidents, messages] = await Promise.all([
     providerClient
       .from("appointments")
       .select("id,status,scheduled_at,reason,patient_id")
@@ -724,6 +926,12 @@ async function verifyProviderFlow(providerClient, providerId) {
       .or(`opened_by.eq.${providerId},assigned_to.eq.${providerId}`)
       .order("created_at", { ascending: false })
       .limit(20),
+    providerClient
+      .from("messages")
+      .select("id,appointment_id,body,created_at")
+      .or(`sender_id.eq.${providerId},recipient_id.eq.${providerId}`)
+      .order("created_at", { ascending: false })
+      .limit(30),
   ]);
 
   if (queue.error) throw new Error(`provider queue read failed: ${queue.error.message}`);
@@ -745,6 +953,9 @@ async function verifyProviderFlow(providerClient, providerId) {
   if (incidents.error && !isMissingRelationError(incidents.error)) {
     throw new Error(`provider incidents read failed: ${incidents.error.message}`);
   }
+  if (messages.error && !isMissingRelationError(messages.error)) {
+    throw new Error(`provider messages read failed: ${messages.error.message}`);
+  }
 
   const sessionData = sessions.error ? [] : sessions.data || [];
   const noteData = notes.error ? [] : notes.data || [];
@@ -752,6 +963,7 @@ async function verifyProviderFlow(providerClient, providerId) {
   const claimData = claims.error ? [] : claims.data || [];
   const notificationData = notifications.error ? [] : notifications.data || [];
   const incidentData = incidents.error ? [] : incidents.data || [];
+  const messageData = messages.error ? [] : messages.data || [];
 
   return {
     queueCount: (queue.data || []).length,
@@ -761,11 +973,13 @@ async function verifyProviderFlow(providerClient, providerId) {
     claimCount: claimData.length,
     notificationCount: notificationData.length,
     incidentCount: incidentData.length,
+    messageCount: messageData.length,
     sampleQueue: (queue.data || []).slice(0, 5),
     sampleConsultations: sessionData.slice(0, 5),
     sampleNotes: noteData.slice(0, 3),
     sampleClaims: claimData.slice(0, 3),
     sampleNotifications: notificationData.slice(0, 3),
+    sampleMessages: messageData.slice(0, 3),
   };
 }
 
@@ -915,22 +1129,22 @@ async function main() {
   await updateProviderQueueStates(provider.client, provider.user.id, initialSeedAppointments);
   const seedAppointments = await readSeedAppointments(patient.client, patient.user.id, provider.user.id);
   await ensureMeetingLinks(provider.client, provider.user.id, seedAppointments);
-  let phaseASeeded = true;
-  let phaseAWarning = null;
+  let clinicalSeeded = true;
+  let clinicalWarning = null;
   try {
     await ensureClinicalArtifacts(provider.client, patient.user.id, provider.user.id, seedAppointments);
   } catch (error) {
     if (isMissingRelationError(error)) {
-      phaseASeeded = false;
-      phaseAWarning =
-        "Phase A tables are not present yet. Run supabase/migrations/0002_phase_a_clinical_core.sql and rerun seed.";
+      clinicalSeeded = false;
+      clinicalWarning =
+        "Clinical tables are not present yet. Run supabase/migrations/0002_phase_a_clinical_core.sql and rerun seed.";
     } else {
       throw error;
     }
   }
 
-  let phaseBcdSeeded = true;
-  let phaseBcdWarning = null;
+  let operationsSeeded = true;
+  let operationsWarning = null;
   try {
     await ensureOperationsArtifacts(
       provider.client,
@@ -942,9 +1156,9 @@ async function main() {
     );
   } catch (error) {
     if (isMissingRelationError(error)) {
-      phaseBcdSeeded = false;
-      phaseBcdWarning =
-        "Phase B/C/D foundation tables are not present yet. Run supabase/migrations/0003_phase_bcd_foundations.sql and rerun seed.";
+      operationsSeeded = false;
+      operationsWarning =
+        "Operations tables are not present yet. Run supabase/migrations/0003_phase_bcd_foundations.sql and rerun seed.";
     } else {
       throw error;
     }
@@ -968,13 +1182,13 @@ async function main() {
           provider: providerCheck,
           admin: adminCheck,
         },
-        phaseA: {
-          seeded: phaseASeeded,
-          warning: phaseAWarning,
+        clinical: {
+          seeded: clinicalSeeded,
+          warning: clinicalWarning,
         },
-        phaseBcd: {
-          seeded: phaseBcdSeeded,
-          warning: phaseBcdWarning,
+        operations: {
+          seeded: operationsSeeded,
+          warning: operationsWarning,
         },
       },
       null,
